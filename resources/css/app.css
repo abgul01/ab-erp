@@ -1,9 +1,77 @@
 @import 'tailwindcss';
 
-@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-@source '../../storage/framework/views/*.php';
+@source '../../resources/js/**/*.jsx';
+
+/*
+ * FTPI corporate identity (PRD 7): clean, formal Japanese corporate look,
+ * dominant corporate blue & white. Design tokens as CSS variables.
+ */
+:root {
+    --ftpi-primary: #0b3d91;      /* corporate blue */
+    --ftpi-primary-dark: #082c6b;
+    --ftpi-primary-light: #1e5fc4;
+    --ftpi-accent: #d32f2f;       /* Japanese red accent */
+    --ftpi-bg: #f4f6fa;
+    --ftpi-sidebar: #0b2447;
+    --ftpi-sidebar-hover: #14315f;
+}
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+    --color-primary: #0b3d91;
+    --color-primary-dark: #082c6b;
+    --color-primary-light: #1e5fc4;
+}
+
+html,
+body,
+#root {
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    background: var(--ftpi-bg);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    color: #1a202c;
+}
+
+/* Utility helpers used across the SPA */
+.btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2 text-sm font-medium transition;
+}
+.btn-primary {
+    background: var(--ftpi-primary);
+    color: #fff;
+}
+.btn-primary:hover {
+    background: var(--ftpi-primary-dark);
+}
+.btn-ghost {
+    @apply border border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
+}
+.btn-danger {
+    @apply bg-red-600 text-white hover:bg-red-700;
+}
+.btn:disabled {
+    @apply cursor-not-allowed opacity-50;
+}
+
+.field-label {
+    @apply mb-1 block text-sm font-medium text-slate-600;
+}
+.field-input {
+    @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--ftpi-primary)] focus:ring-2 focus:ring-blue-100;
+}
+
+.card {
+    @apply rounded-lg border border-slate-200 bg-white shadow-sm;
+}
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 6px;
 }

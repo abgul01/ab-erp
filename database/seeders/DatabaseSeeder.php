@@ -2,24 +2,272 @@
 
 namespace Database\Seeders;
 
+use App\Models\menus;
+use App\Models\status_id;
 use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
     /**
-     * Seed the application's database.
+     * Idempotent foundation seed: statuses, admin + demo operator,
+     * dynamic menu tree, per-user permissions, and sample master data.
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        $this->seedStatuses();
+        [$admin, $operator] = $this->seedUsers();
+        $menus = $this->seedMenus();
+        $this->seedPermissions($operator, $menus);
+        $this->seedMasterData();
+        $this->call(DemoDataSeeder::class);
+    }
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+    private function seedStatuses(): void
+    {
+        foreach (['ADMIN', 'ACTIVE', 'INACTIVE'] as $s) {
+            status_id::firstOrCreate(['status' => $s]);
+        }
+    }
+
+    /** @return array{0: User, 1: User} */
+    private function seedUsers(): array
+    {
+        $adminStatus = status_id::where('status', 'ADMIN')->value('id');
+        $activeStatus = status_id::where('status', 'ACTIVE')->value('id');
+
+        $admin = User::updateOrCreate(
+            ['username' => 'admin'],
+            [
+                'name' => 'Administrator',
+                'email' => 'admin@ab-erp.local',
+                'identity' => 'ADM-0001',
+                'password' => Hash::make('password'),
+                'status_id' => $adminStatus,
+            ]
+        );
+
+        $operator = User::updateOrCreate(
+            ['username' => 'operator'],
+            [
+                'name' => 'Operator Master Data',
+                'email' => 'operator@ab-erp.local',
+                'identity' => 'OPR-0001',
+                'password' => Hash::make('password'),
+                'status_id' => $activeStatus,
+            ]
+        );
+
+        return [$admin, $operator];
+    }
+
+    /**
+     * Seed the hierarchical menu. Returns a flat map link => menu id
+     * for leaf menus (those with a real route link).
+     *
+     * @return array<string, int>
+     */
+    private function seedMenus(): array
+    {
+        $tree = [
+            ['Administrator', '0', 'shield', []],
+            ['General Data Master', '0', 'database', [
+                ['Item Category', 'categories', 'tag'],
+                ['Unit of Measure', 'uoms', 'ruler'],
+                ['Currency', 'currencies', 'coins'],
+                ['Tax Code', 'taxes', 'percent'],
+                ['Maker', 'makers', 'factory'],
+                ['Machine', 'machines', 'cog'],
+                ['Contact Category', 'contact-categories', 'tags'],
+                ['Contacts', 'contacts', 'users'],
+                ['Process', 'processes', 'workflow'],
+            ]],
+            ['Engineering', '0', 'wrench', [
+                ['Item Master', 'items', 'box'],
+            ]],
+            ['Procurement', '0', 'shopping-cart', [
+                ['Purchase Requisition', 'pr', 'clipboard-list'],
+                ['Purchase Order', 'po', 'file-text'],
+                ['Goods Receipt', 'grn', 'package-check'],
+                ['Import Quota', 'quotas', 'scale'],
+                ['Landed Cost', 'landed-costs', 'calculator'],
+                ['GR Reject', 'gr-rejects', 'undo'],
+                ['AP Invoice', 'ap-invoices', 'receipt'],
+            ]],
+            ['WMS Raw Material', '0', 'warehouse', [
+                ['Master Rak', 'racks', 'rows'],
+                ['Incoming RM', 'incoming-rm', 'package-check'],
+                ['Outgoing RM', 'outgoing-rm', 'send'],
+                ['Remaining / Tankan', 'remaining-rm', 'undo'],
+                ['Stok RM', 'stock-rm', 'boxes'],
+            ]],
+            ['Order Management', '0', 'tags', [
+                ['Forecast', 'forecasts', 'calendar'],
+                ['Sales Order', 'sales-orders', 'file-text'],
+            ]],
+            ['Manufacturing', '0', 'factory', [
+                ['MPP (Rencana Bulanan)', 'mpp', 'calendar'],
+                ['MPS (Jadwal Produksi)', 'mps', 'workflow'],
+                ['Work Order', 'work-orders', 'clipboard-list'],
+            ]],
+        ];
+
+        $links = [];
+        foreach ($tree as [$name, $link, $icon, $children]) {
+            $parent = menus::firstOrCreate(
+                ['name' => $name, 'parent_id' => 0],
+                ['link' => $link, 'icon' => $icon]
+            );
+            foreach ($children as [$cName, $cLink, $cIcon]) {
+                $child = menus::firstOrCreate(
+                    ['name' => $cName, 'parent_id' => $parent->id],
+                    ['link' => $cLink, 'icon' => $cIcon]
+                );
+                $links[$cLink] = $child->id;
+            }
+        }
+
+        return $links;
+    }
+
+    /**
+     * Give the demo operator view+create+edit on master data, view-only on engineering,
+     * to demonstrate the RBAC/menu filtering. (admin bypasses via super-admin.)
+     *
+     * @param  array<string, int>  $menuLinks
+     */
+    private function seedPermissions(User $operator, array $menuLinks): void
+    {
+        $full = ['categories', 'uoms', 'currencies', 'taxes', 'makers', 'machines', 'contact-categories', 'contacts', 'processes',
+            'pr', 'po', 'grn', 'quotas', 'landed-costs', 'gr-rejects', 'ap-invoices',
+            'racks', 'incoming-rm', 'outgoing-rm', 'remaining-rm', 'stock-rm', 'mpp', 'mps', 'work-orders',
+            'forecasts', 'sales-orders'];
+        $viewOnly = ['items'];
+
+        foreach ($menuLinks as $link => $menuId) {
+            $isFull = in_array($link, $full, true);
+            $isView = $isFull || in_array($link, $viewOnly, true);
+
+            DB::table('user_menu_permissions')->updateOrInsert(
+                ['user_id' => $operator->id, 'menu_id' => $menuId],
+                [
+                    'can_view' => $isView ? 1 : 0,
+                    'can_create' => $isFull ? 1 : 0,
+                    'can_edit' => $isFull ? 1 : 0,
+                    'can_delete' => 0,
+                    'can_download' => 0,
+                    'can_import' => 0,
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ]
+            );
+        }
+    }
+
+    private function seedMasterData(): void
+    {
+        // Item group (m_i_category is used as the item Group: Material / FG only)
+        foreach (['Material', 'FG'] as $c) {
+            DB::table('m_i_category')->updateOrInsert(['name_c' => $c], ['updated_at' => now(), 'created_at' => now()]);
+        }
+
+        // UoM
+        $uoms = [
+            ['PCS', 'Pieces', 'COUNT'],
+            ['KG', 'Kilogram', 'WEIGHT'],
+            ['MM', 'Milimeter', 'LENGTH'],
+            ['BATANG', 'Batang / Bar', 'COUNT'],
+            ['BOX', 'Box / Lot', 'COUNT'],
+        ];
+        foreach ($uoms as [$code, $name, $type]) {
+            DB::table('m_uom')->updateOrInsert(['code' => $code], [
+                'name' => $name, 'uom_type' => $type, 'active' => 1, 'updated_at' => now(), 'created_at' => now(),
+            ]);
+        }
+
+        // Currency
+        DB::table('m_currency')->updateOrInsert(['code' => 'IDR'], ['name' => 'Rupiah', 'is_base' => 1]);
+        DB::table('m_currency')->updateOrInsert(['code' => 'USD'], ['name' => 'US Dollar', 'is_base' => 0]);
+        DB::table('m_currency')->updateOrInsert(['code' => 'JPY'], ['name' => 'Japanese Yen', 'is_base' => 0]);
+
+        // Tax codes (PMK 131/2024): non-luxury DPP nilai lain 11/12, rate 12%
+        DB::table('m_tax')->updateOrInsert(['code' => 'PPN-DN'], [
+            'name' => 'PPN Dalam Negeri (Non-Mewah)', 'rate_pct' => 12.0000,
+            'dpp_factor' => 0.916667, 'is_luxury' => 0, 'effective_from' => '2025-01-01',
         ]);
+        DB::table('m_tax')->updateOrInsert(['code' => 'PPN-LX'], [
+            'name' => 'PPN Barang Mewah', 'rate_pct' => 12.0000,
+            'dpp_factor' => 1.000000, 'is_luxury' => 1, 'effective_from' => '2025-01-01',
+        ]);
+
+        // Makers
+        foreach (['Nippon Steel', 'JFE Steel', 'Krakatau Steel'] as $m) {
+            DB::table('m_maker_m')->updateOrInsert(['name' => $m], ['active' => 1, 'updated_at' => now(), 'created_at' => now()]);
+        }
+
+        // Processes (first process for RM pipe = Cutting)
+        $processes = [
+            ['CUT', 'Cutting', 'Pemotongan pipa (proses pertama)'],
+            ['MCH', 'Machining', 'Pemesinan / turning'],
+            ['CHM', 'Chamfering', 'Chamfer ujung'],
+            ['DRL', 'Drilling', 'Pengeboran'],
+            ['WLD', 'Welding', 'Pengelasan'],
+            ['PLT', 'Plating', 'Pelapisan (subcont)'],
+        ];
+        foreach ($processes as [$code, $name, $desc]) {
+            DB::table('m_process')->updateOrInsert(['code' => $code], [
+                'name_p' => $name, 'descript' => $desc, 'active' => 1, 'created_at' => now(), 'updated' => now(),
+            ]);
+        }
+
+        // Contact categories + sample customer & vendor
+        $catId = DB::table('m_cont_categ')->where('name', 'Customer')->value('id')
+            ?: DB::table('m_cont_categ')->insertGetId(['name' => 'Customer']);
+        $venCatId = DB::table('m_cont_categ')->where('name', 'Vendor')->value('id')
+            ?: DB::table('m_cont_categ')->insertGetId(['name' => 'Vendor']);
+
+        DB::table('m_contacts')->updateOrInsert(['u_code' => 'CUS001'], [
+            'company_n' => 'PT Astra Otoparts', 'nick_n' => 'Astra', 'category_id' => $catId,
+            'active' => 1, 'updated_at' => now(), 'created_at' => now(),
+        ]);
+        DB::table('m_contacts')->updateOrInsert(['u_code' => 'VEN001'], [
+            'company_n' => 'PT Steel Supply Indonesia', 'nick_n' => 'SSI', 'category_id' => $venCatId,
+            'active' => 1, 'updated_at' => now(), 'created_at' => now(),
+        ]);
+
+        // Sample items — group = Material / FG; type = physical shape
+        $matGroup = DB::table('m_i_category')->where('name_c', 'Material')->value('id');
+        $fgGroup = DB::table('m_i_category')->where('name_c', 'FG')->value('id');
+
+        DB::table('m_item')->updateOrInsert(['code' => 'RM-STK-42x6000'], [
+            'part_name' => 'Steel Tube OD42 t3', 'type' => 'Pipe', 'descrip' => 'Pipa baja OD42 tebal 3mm',
+            'category_id' => $matGroup, 'o_d' => 42.00, 'thick' => 3.00, 'length' => 6000.00, 'weight' => 17.30,
+            'min_stock' => 0, 'max_stock' => 0, 'active' => 1,
+            'updated_at' => now(), 'created_at' => now(),
+        ]);
+        DB::table('m_item')->updateOrInsert(['code' => 'FG-BOSS-001'], [
+            'part_name' => 'Boss Steering Axle', 'type' => 'Roundbar', 'descrip' => 'Boss untuk steering axle',
+            'category_id' => $fgGroup, 'min_stock' => 0, 'max_stock' => 0, 'active' => 1,
+            'updated_at' => now(), 'created_at' => now(),
+        ]);
+
+        // Shifts (dipakai WMS putaway / MES)
+        foreach ([['S1', 'Shift 1'], ['S2', 'Shift 2'], ['S3', 'Shift 3']] as [$code, $name]) {
+            DB::table('m_shift')->updateOrInsert(['code' => $code], ['name' => $name]);
+        }
+
+        // Sample import quota (Fase 2) covering the RM steel tube
+        $rmItemId = DB::table('m_item')->where('code', 'RM-STK-42x6000')->value('id');
+        DB::table('m_quota')->updateOrInsert(['code' => 'PI-2026-001'], [
+            'descrip' => 'Kuota impor baja 2026', 'hs_code' => '7304.31',
+            'total_ton' => 500.000, 'valid_from' => '2026-01-01', 'valid_to' => '2026-12-31',
+            'active' => 1, 'updated_at' => now(), 'created_at' => now(),
+        ]);
+        $quotaId = DB::table('m_quota')->where('code', 'PI-2026-001')->value('id');
+        if ($quotaId && $rmItemId) {
+            DB::table('m_quota_item')->updateOrInsert(['quota_id' => $quotaId, 'item_id' => $rmItemId], []);
+        }
     }
 }

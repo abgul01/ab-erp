@@ -2,6 +2,6 @@
 
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+// Serve the React SPA for every non-API, non-asset route.
+Route::get('/{any?}', fn () => view('app'))
+    ->where('any', '^(?!api|build|storage|up).*$');
