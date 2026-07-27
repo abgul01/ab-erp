@@ -15,14 +15,23 @@ class acc_journal_main extends Model
     public $incrementing = true;
 
     protected $fillable = [
+        'code',
+        'date',
         'period',
+        'jrn_type',
         'ref_type',
+        'ref_id',
+        'descrip',
         'status',
-        'user_id'
+        'user_id',
     ];
 
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id', 'id');
+    }
+    public function detail()
+    {
+        return $this->hasMany(acc_journal_det::class, 'main_id', 'id');
     }
 }

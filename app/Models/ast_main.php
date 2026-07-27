@@ -15,11 +15,27 @@ class ast_main extends Model
     public $incrementing = true;
 
     protected $fillable = [
+        'code',
+        'categ_id',
         'name',
+        'acq_date',
+        'acq_cost',
         'useful_life',
+        'po_id',
         'gr_detail_id',
-        'status'
+        'machine_id',
+        'status',
     ];
+
+    public function categ()
+    {
+        return $this->belongsTo(m_asset_categ::class, 'categ_id', 'id');
+    }
+
+    public function depre()
+    {
+        return $this->hasMany(ast_depre::class, 'ast_id', 'id');
+    }
 
     public function gr_detail()
     {

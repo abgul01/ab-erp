@@ -13,12 +13,22 @@ class cst_cogm extends Model
     protected $table = 'cst_cogm';
     protected $primaryKey = 'id';
     public $incrementing = true;
+    public $timestamps = false;
 
     protected $fillable = [
+        'period',
+        'wo_id',
         'material_cost',
+        'labor_cost',
         'foh_cost',
+        'subcont_cost',
         'scrap_recovery',
-        'unit_cost'
+        'total',
+        'unit_cost',
     ];
 
+    public function wo()
+    {
+        return $this->belongsTo(prd_wo_main::class, 'wo_id', 'id');
+    }
 }

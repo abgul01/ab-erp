@@ -13,10 +13,25 @@ class sls_do_detail extends Model
     protected $table = 'sls_do_detail';
     protected $primaryKey = 'id';
     public $incrementing = true;
+    public $timestamps = false;   // sls_do_detail has no created_at/updated_at
 
     protected $fillable = [
-        'item_id'
+        'main_id',
+        'so_detail_id',
+        'item_id',
+        'qty',
+        'fg_code',
     ];
+
+    public function main()
+    {
+        return $this->belongsTo(sls_do_main::class, 'main_id', 'id');
+    }
+
+    public function soDetail()
+    {
+        return $this->belongsTo(sls_so_detail::class, 'so_detail_id', 'id');
+    }
 
     public function item()
     {

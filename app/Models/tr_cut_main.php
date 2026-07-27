@@ -22,6 +22,7 @@ class tr_cut_main extends Model
         'item_id',
         'process_id',
         'date',
+        'shift_id',
         'subcont',
         'sub_code',
         'repair',

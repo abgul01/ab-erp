@@ -17,8 +17,12 @@ class tr_pro_detail extends Model
     protected $fillable = [
         'main_id',
         'machine_id',
+        'user_id',
         'qty_half',
-        'qty_full'
+        'qty_full',
+        'finish',
+        'start_time',
+        'end_time'
     ];
 
     public function main()

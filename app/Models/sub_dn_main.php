@@ -15,12 +15,26 @@ class sub_dn_main extends Model
     public $incrementing = true;
 
     protected $fillable = [
+        'code',
+        'date',
         'po_id',
-        'status'
+        'ven_id',
+        'user_id',
+        'status',
     ];
 
     public function po()
     {
         return $this->belongsTo(prc_po_main::class, 'po_id', 'id');
+    }
+
+    public function ven()
+    {
+        return $this->belongsTo(m_contacts::class, 'ven_id', 'id');
+    }
+
+    public function detail()
+    {
+        return $this->hasMany(sub_dn_detail::class, 'main_id', 'id');
     }
 }

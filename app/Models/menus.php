@@ -15,6 +15,7 @@ class menus extends Model
     public $incrementing = true;
 
     protected $fillable = [
+        'sort',
         'name',
         'link',
         'parent_id',

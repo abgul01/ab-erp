@@ -18,11 +18,20 @@ class sls_so_detail extends Model
     protected $fillable = [
         'main_id',
         'item_id',
+        'po_detail_code',
         'qty',
         'price',
         'pricelist_det_id',
         'tax_id',
+        'pph_tax_id',
+        'dpp',
+        'ppn_value',
+        'pph_value',
+        'local_mat',
+        'ppn',
+        'pph',
         'due_date',
+        'note',
         'qty_delivered',
     ];
 
@@ -39,5 +48,16 @@ class sls_so_detail extends Model
     public function tax()
     {
         return $this->belongsTo(m_tax::class, 'tax_id', 'id');
+    }
+
+    public function pph_tax()
+    {
+        return $this->belongsTo(m_tax::class, 'pph_tax_id', 'id');
+    }
+
+    /** Null when the operator typed the price by hand instead of taking the pricelist. */
+    public function pricelist_det()
+    {
+        return $this->belongsTo(m_pricelist_det::class, 'pricelist_det_id', 'id');
     }
 }

@@ -14,9 +14,13 @@ class m_asset_categ extends Model
     protected $primaryKey = 'id';
     public $incrementing = true;
 
+    public $timestamps = false;
+
     protected $fillable = [
+        'code',
+        'name',
         'useful_life',
-        'depr_method'
+        'depr_method',
     ];
 
 }

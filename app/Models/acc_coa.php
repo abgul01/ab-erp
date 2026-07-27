@@ -13,10 +13,15 @@ class acc_coa extends Model
     protected $table = 'acc_coa';
     protected $primaryKey = 'id';
     public $incrementing = true;
+    public $timestamps = false;
+
 
     protected $fillable = [
+        'code',
+        'name',
         'acc_group',
-        'parent_id'
+        'parent_id',
+        'postable',
     ];
 
 }

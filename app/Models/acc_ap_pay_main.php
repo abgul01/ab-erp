@@ -15,12 +15,20 @@ class acc_ap_pay_main extends Model
     public $incrementing = true;
 
     protected $fillable = [
+        'code',
+        'date',
         'ven_id',
-        'status'
+        'amount',
+        'user_id',
+        'status',
     ];
 
     public function ven()
     {
         return $this->belongsTo(m_contacts::class, 'ven_id', 'id');
+    }
+    public function detail()
+    {
+        return $this->hasMany(acc_ap_pay_det::class, 'main_id', 'id');
     }
 }

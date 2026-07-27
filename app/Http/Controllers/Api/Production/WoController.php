@@ -94,7 +94,24 @@ class WoController extends Controller
             'has_bom' => (bool) $bom && (count($rm) || count($pm)),
             'bom_rm' => $rm,
             'bom_pm' => $pm,
+            'routings' => $this->routingOptions($fgId),
         ]);
+    }
+
+    /** The item's routing choices, ranked by priority; the first is the default. */
+    private function routingOptions(int $fgId): array
+    {
+        return DB::table('m_bom_pro as b')
+            ->join('m_process_main as m', 'm.id', '=', 'b.process_main_id')
+            ->where('b.item_id', $fgId)
+            ->orderBy('b.priority')
+            ->get(['b.process_main_id', 'b.priority', 'm.code', 'm.name'])
+            ->map(fn ($r) => [
+                'process_main_id' => (int) $r->process_main_id,
+                'priority' => (int) $r->priority,
+                'code' => $r->code,
+                'name' => $r->name,
+            ])->values()->all();
     }
 
     /** On-hand serials for a material, excluding those already booked to an open WO. */
@@ -136,13 +153,16 @@ class WoController extends Controller
         [$rmIds, $pmIds] = $this->bomIds($data['fg_id']);
         $this->assertLines($data, $rmIds, $pmIds, 0);
 
-        $wo = DB::transaction(function () use ($data, $request) {
+        $routingId = $this->resolveRouting($data);
+
+        $wo = DB::transaction(function () use ($data, $request, $routingId) {
             $wo = prd_wo_main::create([
                 'code' => (new NumberingService)->next('WO', 'WO'),
                 'date' => $data['date'],
                 'customer_id' => $data['customer_id'],
                 'so_id' => ($data['so_id'] ?? '') ?: '-',
                 'fg_id' => $data['fg_id'],
+                'process_main_id' => $routingId,
                 'mps_id' => $data['mps_id'],
                 'user_id' => $request->user()->id,
                 'qty' => $data['qty'],
@@ -168,12 +188,15 @@ class WoController extends Controller
         [$rmIds, $pmIds] = $this->bomIds($data['fg_id']);
         $this->assertLines($data, $rmIds, $pmIds, $wo->id);
 
-        DB::transaction(function () use ($wo, $data, $request) {
+        $routingId = $this->resolveRouting($data);
+
+        DB::transaction(function () use ($wo, $data, $request, $routingId) {
             $wo->update([
                 'date' => $data['date'],
                 'customer_id' => $data['customer_id'],
                 'so_id' => ($data['so_id'] ?? '') ?: '-',
                 'fg_id' => $data['fg_id'],
+                'process_main_id' => $routingId,
                 'mps_id' => $data['mps_id'],
                 'qty' => $data['qty'],
                 'no_cut' => (int) ($data['no_cut'] ?? 0),
@@ -351,6 +374,8 @@ class WoController extends Controller
 
         $data = $wo->toArray();
         $data['status_label'] = $this->statusLabel((int) $wo->status);
+        $data['routings'] = $this->routingOptions((int) $wo->fg_id);
+        $data['routing'] = collect($data['routings'])->firstWhere('process_main_id', (int) $wo->process_main_id);
 
         $data['detail_rm'] = $wo->detailRm->map(function ($d) use ($qty, $rmByMat) {
             $line = $rmByMat->get($d->rm_id);
@@ -398,12 +423,33 @@ class WoController extends Controller
         }
     }
 
+    /**
+     * The routing this WO will run: the one the operator chose (must be one of
+     * the item's ranked options), or the top-priority routing by default.
+     */
+    private function resolveRouting(array $data): ?int
+    {
+        $options = collect($this->routingOptions((int) $data['fg_id']))->pluck('process_main_id')->all();
+        $chosen = $data['process_main_id'] ?? null;
+
+        if ($chosen) {
+            if (! in_array((int) $chosen, $options, true)) {
+                throw BizException::make('WO_ROUTING', 'Routing yang dipilih bukan salah satu routing item ini.');
+            }
+
+            return (int) $chosen;
+        }
+
+        return $options[0] ?? null;   // default = highest priority
+    }
+
     private function validateWo(Request $request): array
     {
         return $request->validate([
             'date' => ['required', 'date'],
             'mps_id' => ['required', 'integer', 'exists:prd_mps,id'],
             'fg_id' => ['required', 'integer', 'exists:m_item,id'],
+            'process_main_id' => ['nullable', 'integer', 'exists:m_process_main,id'],
             'qty' => ['required', 'integer', 'min:1'],
             'customer_id' => ['required', 'integer', 'exists:m_contacts,id'],
             'so_id' => ['nullable', 'string', 'max:50'],

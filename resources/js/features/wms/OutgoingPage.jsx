@@ -5,7 +5,7 @@ import { useAuth } from '../../stores/auth';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import Icon from '../../components/Icon';
-import { Select, ItemSelect, useOptions, CellInput, money } from '../procurement/common';
+import { Select, useOptions, CellInput, money } from '../procurement/common';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -19,6 +19,25 @@ export default function OutgoingPage() {
     const [error, setError] = useState('');
 
     const racks = useOptions('racks');
+    const shifts = useQuery({ queryKey: ['shifts'], queryFn: async () => (await api.get('/shifts')).data.data });
+    const [woCtx, setWoCtx] = useState(null);      // resolved WO from the scan
+    const [serialView, setSerialView] = useState(false);
+
+    /** Scanning the WO / Denpyou tells us which RM and which serials may leave. */
+    const checkWo = useMutation({
+        mutationFn: async (code) => (await api.get(`/outgoing-rm/wo/${encodeURIComponent(code)}`)).data.data,
+        onSuccess: (d) => {
+            setWoCtx(d);
+            setForm((f) => ({ ...f, wo_id: d.wo_id }));
+            // the WO already says which RM goes out — don't make the storeman pick it
+            if (d.items.length === 1) {
+                onSelectItem(d.items[0].item_id);
+            } else {
+                setForm((f) => ({ ...f, item_id: '', rows: [] }));
+            }
+        },
+        onError: (e) => { setWoCtx(null); setForm((f) => ({ ...f, wo_id: '', item_id: '', rows: [] })); alert(apiError(e)); },
+    });
     const remRacks = (racks.data || []).filter((r) => r.active && r.rem_rack);
     const wos = useQuery({
         queryKey: ['work-orders', 'released'],
@@ -39,7 +58,7 @@ export default function OutgoingPage() {
     });
     const remove = useMutation({ mutationFn: async (id) => api.delete(`/outgoing-rm/${id}`), onSuccess: invalidate, onError: (e) => alert(apiError(e)) });
 
-    const openCreate = () => { setForm({ item_id: '', wo_id: '', date: today(), rows: [] }); setError(''); setModal({ mode: 'create' }); };
+    const openCreate = () => { setForm({ item_id: '', wo_id: '', wo_scan: '', shift_id: '', date: today(), rows: [] }); setWoCtx(null); setError(''); setModal({ mode: 'create' }); };
     const onSelectItem = async (itemId) => {
         if (!itemId) { setForm((f) => ({ ...f, item_id: '', rows: [] })); return; }
         const { data } = await api.get('/stock-rm', { params: { item_id: itemId, per_page: 200 } });
@@ -62,7 +81,7 @@ export default function OutgoingPage() {
     const submit = () => {
         setError('');
         save.mutate({
-            date: form.date, item_id: form.item_id, wo_id: form.wo_id || null,
+            date: form.date, item_id: form.item_id, wo_id: form.wo_id || null, shift_id: form.shift_id || null,
             lines: selected.map((r) => ({
                 serial_id: r.serial_id, qty: r.qty, length_used: r.length_used,
                 rem: !!r.rem, rem_rack_id: r.rem ? r.rem_rack_id : null,
@@ -105,18 +124,64 @@ export default function OutgoingPage() {
                 </>}>
                 {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
                 {form && (<>
-                    <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                        <div><label className="field-label">Item <span className="text-red-500">*</span></label>
-                            <ItemSelect value={form.item_id} onChange={onSelectItem} placeholder="— pilih item —" />
+                    <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-4">
+                        {/* the scan is the entry point — everything else follows from it */}
+                        <div className="sm:col-span-2">
+                            <label className="field-label">Scan WO / Denpyou <span className="text-red-500">*</span></label>
+                            <div className="flex gap-2">
+                                <input className="field-input" value={form.wo_scan || ''} autoFocus placeholder="Scan kode WO atau OP-…"
+                                    disabled={!!woCtx}
+                                    onChange={(e) => setForm((f) => ({ ...f, wo_scan: e.target.value }))}
+                                    onKeyDown={(e) => { if (e.key === 'Enter' && form.wo_scan) checkWo.mutate(form.wo_scan); }}
+                                    onBlur={() => { if (form.wo_scan && !woCtx) checkWo.mutate(form.wo_scan); }} />
+                                {woCtx ? (
+                                    <button className="btn btn-ghost shrink-0" onClick={() => { setWoCtx(null); setForm((f) => ({ ...f, wo_scan: '', wo_id: '', item_id: '', rows: [] })); }}>Ganti</button>
+                                ) : (
+                                    <button className="btn btn-primary shrink-0" disabled={!form.wo_scan || checkWo.isPending}
+                                        onClick={() => checkWo.mutate(form.wo_scan)}>Cek WO</button>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex items-end">
+                            <button className="rounded bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:bg-slate-300"
+                                disabled={!woCtx} onClick={() => setSerialView(true)}>View Serial</button>
+                        </div>
+                        <div><label className="field-label">Shift</label>
+                            <select className="field-input" value={form.shift_id} onChange={(e) => setForm((f) => ({ ...f, shift_id: e.target.value }))}>
+                                <option value="">— pilih shift —</option>
+                                {(shifts.data || []).map((s) => <option key={s.id} value={s.id}>{s.name || s.code}</option>)}
+                            </select>
+                        </div>
+
+                        <div className="sm:col-span-2"><label className="field-label">Item (RM dari WO)</label>
+                            {woCtx && woCtx.items.length > 1 ? (
+                                <select className="field-input" value={form.item_id} onChange={(e) => onSelectItem(e.target.value ? Number(e.target.value) : '')}>
+                                    <option value="">— pilih RM dari WO —</option>
+                                    {woCtx.items.map((i) => <option key={i.item_id} value={i.item_id}>{i.code} — {i.part_name}</option>)}
+                                </select>
+                            ) : (
+                                <input className="field-input bg-slate-100" readOnly
+                                    value={woCtx?.items?.[0] ? `${woCtx.items[0].code} — ${woCtx.items[0].part_name}` : ''}
+                                    placeholder="— otomatis dari WO —" />
+                            )}
                         </div>
                         <div><label className="field-label">Tanggal <span className="text-red-500">*</span></label><input type="date" className="field-input" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} /></div>
-                        <div><label className="field-label">Work Order (Released)</label>
-                            <Select value={form.wo_id} onChange={(v) => setForm((f) => ({ ...f, wo_id: v }))} options={wos.data} getValue={(o) => o.id} getLabel={(o) => `${o.code} — ${o.fg?.code || ''} x${o.qty}`} placeholder="— tanpa WO (bebas) —" />
-                            <p className="mt-1 text-xs text-slate-400">Jika pilih WO: item harus RM WO & hanya serial ter-booking yang boleh keluar.</p>
-                        </div>
+                        <div><label className="field-label">Work Order</label>
+                            <input className="field-input bg-slate-100" readOnly value={woCtx?.wo_code || ''} placeholder="— belum discan —" /></div>
                     </div>
 
-                    {!form.item_id && <p className="rounded-md border border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">Pilih item untuk memuat serial on-hand.</p>}
+                    {woCtx && (
+                        <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm">
+                            <b>{woCtx.wo_code}</b>{woCtx.no_dp ? ` · Denpyou ${woCtx.no_dp}` : ''} — FG {woCtx.fg?.code} x{money(woCtx.qty)}
+                            <div className="text-xs text-emerald-700">RM dibutuhkan: {woCtx.items.map((i) => i.code).join(', ') || '—'}</div>
+                        </div>
+                    )}
+
+                    {!form.item_id && (
+                        <p className="rounded-md border border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">
+                            {woCtx ? 'Pilih salah satu RM milik WO untuk memuat serial on-hand.' : 'Scan WO / Denpyou terlebih dahulu — item dan serial mengikuti WO.'}
+                        </p>
+                    )}
                     {form.item_id && form.rows.length === 0 && <p className="rounded-md border border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">Tidak ada stok on-hand untuk item ini.</p>}
 
                     {form.rows.length > 0 && (
@@ -188,6 +253,41 @@ export default function OutgoingPage() {
                         <p className="mt-2 text-xs text-slate-500">Dokumen Remaining terkait: {(view.remaining_docs || []).map((r) => r.code).join(', ')}</p>
                     )}
                 </>)}
+            </Modal>
+
+            {/* Serial yang di-booking ke WO hasil scan */}
+            <Modal open={serialView} onClose={() => setSerialView(false)} size="max-w-4xl" title={`Serial ter-booking — ${woCtx?.wo_code || ''}`}
+                footer={<button className="btn btn-ghost" onClick={() => setSerialView(false)}>Tutup</button>}>
+                {woCtx && woCtx.items.map((it) => (
+                    <div key={it.item_id} className="mb-4">
+                        <div className="mb-1 text-sm font-semibold text-slate-700">{it.code} — {it.part_name}</div>
+                        <table className="w-full text-sm">
+                            <thead><tr className="bg-slate-50 text-left text-xs font-semibold text-slate-600">
+                                <th className="border border-slate-300 px-2 py-1.5">Serial</th>
+                                <th className="border border-slate-300 px-2 py-1.5">Qty</th>
+                                <th className="border border-slate-300 px-2 py-1.5">Length Book (mm)</th>
+                                <th className="border border-slate-300 px-2 py-1.5">Sisa (mm)</th>
+                                <th className="border border-slate-300 px-2 py-1.5">Status</th>
+                            </tr></thead>
+                            <tbody>
+                                {it.serials.length === 0 && <tr><td className="border border-slate-300 px-2 py-1.5" colSpan={5}>Belum ada serial ter-booking.</td></tr>}
+                                {it.serials.map((s) => (
+                                    <tr key={s.serial_id} className={s.issued ? 'bg-slate-50 text-slate-400' : ''}>
+                                        <td className="border border-slate-300 px-2 py-1.5 font-medium">{s.serial_id}</td>
+                                        <td className="border border-slate-300 px-2 py-1.5">{money(s.qty)}</td>
+                                        <td className="border border-slate-300 px-2 py-1.5">{money(s.length_book)}</td>
+                                        <td className="border border-slate-300 px-2 py-1.5">{money(s.length_rem)}</td>
+                                        <td className="border border-slate-300 px-2 py-1.5">
+                                            {s.issued
+                                                ? <span className="rounded bg-slate-300 px-2 py-0.5 text-xs text-slate-700">sudah keluar</span>
+                                                : <span className="rounded bg-emerald-600 px-2 py-0.5 text-xs text-white">siap keluar</span>}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                ))}
             </Modal>
         </div>
     );

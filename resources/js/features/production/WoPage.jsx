@@ -244,20 +244,22 @@ export default function WoPage() {
         if (!fgId) { setFgInfo(null); return null; }
         const { data } = await api.get(`/work-orders/fg-info/${fgId}`, { params: { qty: qty || 1 } });
         setFgInfo(data.data);
+        // default to the highest-priority routing when none chosen yet
+        setForm((f) => (f && !f.process_main_id && data.data.routings?.length ? { ...f, process_main_id: data.data.routings[0].process_main_id } : f));
         return data.data;
     };
-    const openCreate = () => { setForm({ date: today(), customer_id: '', so_id: '', qty: 1, no_cut: false, for_pm: false, fg_id: '', mps_id: '' }); setFgInfo(null); setRmRows([]); setPmRows([]); setError(''); setModal({ mode: 'create' }); };
+    const openCreate = () => { setForm({ date: today(), customer_id: '', so_id: '', qty: 1, no_cut: false, for_pm: false, fg_id: '', mps_id: '', process_main_id: '' }); setFgInfo(null); setRmRows([]); setPmRows([]); setError(''); setModal({ mode: 'create' }); };
     const onSelectMps = (mpsId) => {
         const m = (openMps.data || []).find((x) => x.id === Number(mpsId));
         if (!m) { setForm((f) => ({ ...f, mps_id: '', fg_id: '' })); setFgInfo(null); return; }
         const qty = m.wo_remaining > 0 ? m.wo_remaining : m.qty;
-        setForm((f) => ({ ...f, mps_id: mpsId, fg_id: m.item_id, qty }));
+        setForm((f) => ({ ...f, mps_id: mpsId, fg_id: m.item_id, qty, process_main_id: '' }));
         setRmRows([]); setPmRows([]); loadFgInfo(m.item_id, qty);
     };
     const openDetail = async (row) => { const { data } = await api.get(`/work-orders/${row.id}`); setDetail(data.data); };
     const openEdit = async (wo) => {
         setError('');
-        setForm({ date: wo.date?.slice(0, 10), customer_id: wo.customer_id, so_id: wo.so_id === '-' ? '' : wo.so_id, qty: wo.qty, no_cut: !!wo.no_cut, for_pm: !!wo.for_pm, fg_id: wo.fg_id, mps_id: wo.mps_id });
+        setForm({ date: wo.date?.slice(0, 10), customer_id: wo.customer_id, so_id: wo.so_id === '-' ? '' : wo.so_id, qty: wo.qty, no_cut: !!wo.no_cut, for_pm: !!wo.for_pm, fg_id: wo.fg_id, mps_id: wo.mps_id, process_main_id: wo.process_main_id || '' });
         const info = await loadFgInfo(wo.fg_id, wo.qty);
         const minUseByMat = Object.fromEntries((info?.bom_rm || []).map((b) => [b.rm_id, b.min_use_all ?? b.length_use]));
         const mk = (d, s) => ({ key: uid(), rm_id: d.rm_id, code: d.rm?.code, spec: d.rm ? `OD:${d.rm.o_d ?? ''}` : '', length_use: d.length_use, min_use_all: minUseByMat[d.rm_id] ?? d.length_use, serial_id: s?.serial_id || '', length_serial: s?.length_asal ?? '', length_book: s?.length_book ?? '', qty: s?.qty ?? '', length_rem: s?.length_rem ?? '', scrap: !!s?.scrap, note: s?.note || '' });
@@ -393,6 +395,14 @@ export default function WoPage() {
                                     <Select value={form.mps_id} onChange={onSelectMps} options={openMps.data} getValue={(o) => o.id} getLabel={(o) => `${o.plan_date?.slice(0, 10)} · ${o.item?.code} (sisa ${o.wo_remaining}/${o.qty})`} placeholder="— pilih MPS approved —" />
                                 )}
                                 {form.fg_id && <p className="mt-1 truncate text-xs text-slate-500">FG: {itemById[form.fg_id] ? `${itemById[form.fg_id].code} — ${itemById[form.fg_id].part_name}` : `#${form.fg_id}`}</p>}
+                            </div>
+                            <div className="lg:col-span-2">
+                                <label className="field-label">Routing <span className="text-red-500">*</span></label>
+                                <select className="field-input" value={form.process_main_id || ''} onChange={(e) => set('process_main_id', e.target.value ? Number(e.target.value) : '')} disabled={!fgInfo?.routings?.length}>
+                                    <option value="">{fgInfo?.routings?.length ? '— pilih routing —' : '— pilih MPS dulu —'}</option>
+                                    {(fgInfo?.routings || []).map((r) => <option key={r.process_main_id} value={r.process_main_id}>{`#${r.priority} · ${r.code} — ${r.name}`}</option>)}
+                                </select>
+                                {fgInfo && !fgInfo.routings?.length && <p className="mt-1 text-xs text-amber-600">FG ini belum punya routing — atur di Item Master tab Proses.</p>}
                             </div>
                         </div>
                         {fgInfo && (

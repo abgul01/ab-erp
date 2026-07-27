@@ -44,6 +44,56 @@ class OutgoingController extends Controller
         return ApiResponse::item($data);
     }
 
+    /**
+     * Scan a WO / Denpyou at the counter. Accepts the WO code itself, the
+     * "OP-{woId}" denpyou form, or a WIP code, and answers with the RM the WO
+     * needs plus every serial booked to it — that is what the storeman may
+     * hand out, and what the "View Serial" button lists.
+     */
+    public function checkWo(string $code)
+    {
+        $code = trim($code);
+        $wo = \App\Models\prd_wo_main::with(['fg', 'detailRm.rm', 'detailRm.serials'])->where('code', $code)->first();
+        if (! $wo) {
+            $wipId = DB::table('prd_wip')->where('no_dp', $code)->orWhere('code', $code)->value('wo_id');
+            if ($wipId) {
+                $wo = \App\Models\prd_wo_main::with(['fg', 'detailRm.rm', 'detailRm.serials'])->find($wipId);
+            }
+        }
+        if (! $wo && preg_match('/(\d+)\s*$/', $code, $m)) {
+            $wo = \App\Models\prd_wo_main::with(['fg', 'detailRm.rm', 'detailRm.serials'])->find((int) ltrim($m[1], '0'));
+        }
+        if (! $wo) {
+            throw BizException::make('OUT_WO', "WO / Denpyou '{$code}' tidak ditemukan.");
+        }
+        if ((int) $wo->status !== \App\Http\Controllers\Api\Production\WoController::RELEASED) {
+            throw BizException::make('OUT_WO_STATE', "WO {$wo->code} belum/tidak lagi berstatus Released.");
+        }
+
+        // serials already issued must not be offered again
+        $issued = DB::table('wh_out_detail')->pluck('serial_id')->map(fn ($v) => (string) $v)->flip();
+
+        $items = $wo->detailRm->map(fn ($d) => [
+            'item_id' => (int) $d->rm_id,
+            'code' => $d->rm?->code, 'part_name' => $d->rm?->part_name,
+            'serials' => $d->serials->map(fn ($s) => [
+                'serial_id' => (string) $s->serial_id,
+                'length_book' => (float) $s->length_book,
+                'length_rem' => (float) $s->length_rem,
+                'qty' => (int) $s->qty_per_serial,
+                'issued' => $issued->has((string) $s->serial_id),
+            ])->values(),
+        ])->values();
+
+        return ApiResponse::item([
+            'wo_id' => $wo->id, 'wo_code' => $wo->code,
+            'no_dp' => DB::table('prd_wip')->where('wo_id', $wo->id)->value('no_dp'),
+            'fg' => $wo->fg?->only(['id', 'code', 'part_name']),
+            'qty' => (int) $wo->qty,
+            'items' => $items,
+        ]);
+    }
+
     public function store(Request $request)
     {
         $data = $request->validate([

@@ -8,6 +8,7 @@ use App\Models\prd_mpp;
 use App\Models\prd_mps;
 use App\Support\ApiResponse;
 use App\Support\AuditLogger;
+use App\Support\PlanningService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -89,59 +90,72 @@ class MppController extends Controller
     }
 
     /**
-     * Generate/refresh MPP for a period from demand − FG stock:
-     *   demand = max(Σ approved-SO qty, Σ FINAL-forecast qty) per FG,
-     *   plan_qty = max(0, demand − fg_stock).  (FG stock = 0 sampai WMS FG ada.)
-     * Only DRAFT rows are (re)written; APPROVED MPP tidak ditimpa.
+     * Generate/refresh MPP for one or more periods from net demand:
+     *   demand   = max(Σ approved-SO qty, Σ FINAL-forecast qty) per FG,
+     *   plan_qty = max(0, demand − on_process).
+     * on_process = pieces already started at the first process for open WOs
+     * (PlanningService::onProcess). Only DRAFT rows are (re)written; APPROVED
+     * MPP is never overwritten. Accepts either a single `period` or a list of
+     * `periods` (YYYYMM) so the whole quarter can be built in one click.
      */
     public function generate(Request $request)
     {
         $data = $request->validate([
-            'period' => ['required', 'string', 'regex:/^\d{6}$/'],
+            'period' => ['required_without:periods', 'string', 'regex:/^\d{6}$/'],
+            'periods' => ['required_without:period', 'array'],
+            'periods.*' => ['string', 'regex:/^\d{6}$/'],
             'source' => ['nullable', 'in:MAX,SO,FORECAST'],
         ]);
-        $period = $data['period'];
+        $periods = $data['periods'] ?? [$data['period']];
         $source = $data['source'] ?? 'MAX';
+        $planner = new PlanningService;
+        $fg = new \App\Support\FgStockService;
 
-        $so = DB::table('sls_so_detail as d')->join('sls_so_main as m', 'm.id', '=', 'd.main_id')
-            ->where('m.status', 'APPROVED')
-            ->whereRaw("DATE_FORMAT(m.date, '%Y%m') = ?", [$period])
-            ->groupBy('d.item_id')->selectRaw('d.item_id, SUM(d.qty) as q')->pluck('q', 'item_id');
-
-        $fc = DB::table('sls_forecast')->where('period', $period)->where('version', 'FINAL')
-            ->groupBy('item_id')->selectRaw('item_id, SUM(qty) as q')->pluck('q', 'item_id');
-
-        $itemIds = collect($so->keys())->merge($fc->keys())->unique();
         $created = 0; $updated = 0; $skipped = 0;
 
-        foreach ($itemIds as $itemId) {
-            $soQ = (int) ($so[$itemId] ?? 0);
-            $fcQ = (int) ($fc[$itemId] ?? 0);
-            $demand = match ($source) {
-                'SO' => $soQ,
-                'FORECAST' => $fcQ,
-                default => max($soQ, $fcQ),
-            };
-            $fgStock = 0; // TODO: WMS FG on-hand belum ada
-            $plan = max(0, $demand - $fgStock);
-            if ($plan <= 0) {
-                continue;
-            }
-            $existing = prd_mpp::where('period', $period)->where('item_id', $itemId)->first();
-            if (! $existing) {
-                prd_mpp::create(['period' => $period, 'item_id' => $itemId, 'plan_qty' => $plan, 'status' => 'DRAFT']);
-                $created++;
-            } elseif ($existing->status === 'DRAFT') {
-                $existing->update(['plan_qty' => $plan]);
-                $updated++;
-            } else {
-                $skipped++;
+        foreach ($periods as $period) {
+            $so = DB::table('sls_so_detail as d')->join('sls_so_main as m', 'm.id', '=', 'd.main_id')
+                ->where('m.status', 'APPROVED')
+                ->whereRaw("DATE_FORMAT(m.date, '%Y%m') = ?", [$period])
+                ->groupBy('d.item_id')->selectRaw('d.item_id, SUM(d.qty) as q')->pluck('q', 'item_id');
+
+            $fc = DB::table('sls_forecast')->where('period', $period)->where('version', 'FINAL')
+                ->groupBy('item_id')->selectRaw('item_id, SUM(qty) as q')->pluck('q', 'item_id');
+
+            $itemIds = collect($so->keys())->merge($fc->keys())->unique();
+
+            foreach ($itemIds as $itemId) {
+                $soQ = (int) ($so[$itemId] ?? 0);
+                $fcQ = (int) ($fc[$itemId] ?? 0);
+                $demand = match ($source) {
+                    'SO' => $soQ,
+                    'FORECAST' => $fcQ,
+                    default => max($soQ, $fcQ),
+                };
+                $onProcess = $planner->onProcess((int) $itemId);
+                $fgStock = $fg->stock((int) $itemId);
+                // net requirement: demand not already covered by WIP or finished stock
+                $plan = max(0, $demand - $onProcess - $fgStock);
+                if ($plan <= 0) {
+                    continue;
+                }
+                $existing = prd_mpp::where('period', $period)->where('item_id', $itemId)->first();
+                if (! $existing) {
+                    prd_mpp::create(['period' => $period, 'item_id' => $itemId, 'plan_qty' => $plan, 'status' => 'DRAFT']);
+                    $created++;
+                } elseif ($existing->status === 'DRAFT') {
+                    $existing->update(['plan_qty' => $plan]);
+                    $updated++;
+                } else {
+                    $skipped++;
+                }
             }
         }
 
-        AuditLogger::record($request, "Generate MPP {$period} ({$source}): +{$created} ~{$updated}");
+        $label = implode(',', $periods);
+        AuditLogger::record($request, "Generate MPP {$label} ({$source}): +{$created} ~{$updated}");
 
-        return ApiResponse::item(['period' => $period, 'created' => $created, 'updated' => $updated, 'skipped_approved' => $skipped]);
+        return ApiResponse::item(['periods' => $periods, 'created' => $created, 'updated' => $updated, 'skipped_approved' => $skipped]);
     }
 
     private function assertDraft(prd_mpp $mpp): void

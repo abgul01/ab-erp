@@ -18,7 +18,7 @@ use Illuminate\Validation\Rule;
  *   1. Main    — code, part_name, type, descrip, category_id, pm, active
  *   2. Detail  — o_d, i_d, thick, width, height, length, length_cut, weight, tolerance, min/max stock
  *   3. BOM     — RM lines (m_bom_det_rm) + PM lines (m_bom_det_pm) under one m_bom header (FG)
- *   4. Process — ordered routing (m_bom_pro_det under m_bom_pro header) (FG)
+ *   4. Process — routing templates the item may use, ranked by priority (m_bom_pro) (FG)
  *   5. Customer— customers this item may ship to (m_item_customer) (FG)
  *
  * The m_item model/schema is left untouched; BOM / process / customer are
@@ -83,10 +83,10 @@ class ItemController extends CrudController
             'pm_lines.*.pm_id' => ['required', 'integer', 'exists:m_item,id'],
             'pm_lines.*.qty' => ['required', 'integer', 'min:1'],
 
-            // --- Tab 4: Process (FG) ---
-            'processes' => ['array'],
-            'processes.*.proc_id' => ['required', 'integer', 'exists:m_process,id'],
-            'processes.*.sequence' => ['nullable', 'integer', 'min:0'],
+            // --- Tab 4: Process (FG) — item's routing options, ranked by priority ---
+            'routings' => ['array'],
+            'routings.*.process_main_id' => ['required', 'integer', 'exists:m_process_main,id'],
+            'routings.*.priority' => ['nullable', 'integer', 'min:1'],
 
             // --- Tab 5: Customer (FG) ---
             'customers' => ['array'],
@@ -100,7 +100,7 @@ class ItemController extends CrudController
     {
         $item = m_item::findOrFail($id);
         $bom = m_bom::with(['rmLines.material', 'pmLines.part'])->where('item_id', $id)->first();
-        $pro = m_bom_pro::with(['detail.process'])->where('item_id', $id)->first();
+        $pros = m_bom_pro::with(['processMain.detail.process'])->where('item_id', $id)->orderBy('priority')->get();
 
         $data = $item->toArray();
         $data['rm_lines'] = $bom ? $bom->rmLines->map(fn ($l) => [
@@ -115,11 +115,22 @@ class ItemController extends CrudController
             'qty' => $l->qty,
             'part' => $l->part?->only(['id', 'code', 'part_name']),
         ])->all() : [];
-        $data['processes'] = $pro ? $pro->detail->sortBy('sequence')->map(fn ($d) => [
-            'proc_id' => $d->proc_id,
-            'sequence' => $d->sequence,
-            'process' => $d->process?->only(['id', 'code', 'name_p']),
-        ])->values()->all() : [];
+        // the item's routing options, ranked by priority; each carries its
+        // template's resolved steps for a read-only preview
+        $data['routings'] = $pros->map(fn ($pro) => [
+            'process_main_id' => $pro->process_main_id,
+            'priority' => (int) $pro->priority,
+            'routing' => $pro->processMain ? [
+                'id' => $pro->processMain->id,
+                'code' => $pro->processMain->code,
+                'name' => $pro->processMain->name,
+                'steps' => $pro->processMain->detail->sortBy('sequence')->map(fn ($d) => [
+                    'proc_id' => $d->proc_id,
+                    'sequence' => $d->sequence,
+                    'process' => $d->process?->only(['id', 'code', 'name_p']),
+                ])->values()->all(),
+            ] : null,
+        ])->values()->all();
         $data['customers'] = m_item_customer::with('cus')->where('item_id', $id)->orderBy('priority')->get()->map(fn ($c) => [
             'cus_id' => $c->cus_id,
             'priority' => $c->priority,
@@ -201,13 +212,15 @@ class ItemController extends CrudController
             }
         }
 
-        if (array_key_exists('processes', $data)) {
-            $pro = m_bom_pro::firstOrCreate(['item_id' => $item->id]);
-            $pro->detail()->delete();
-            foreach ($data['processes'] ?? [] as $i => $p) {
-                $pro->detail()->create([
-                    'proc_id' => $p['proc_id'],
-                    'sequence' => $p['sequence'] ?? ($i + 1),
+        if (array_key_exists('routings', $data)) {
+            // m_bom_pro is the item→routing link, one row per allowed template,
+            // ranked by priority. The WO later picks which one to run.
+            m_bom_pro::where('item_id', $item->id)->delete();
+            foreach (array_values($data['routings'] ?? []) as $i => $r) {
+                m_bom_pro::create([
+                    'item_id' => $item->id,
+                    'process_main_id' => $r['process_main_id'],
+                    'priority' => $r['priority'] ?? ($i + 1),
                 ]);
             }
         }

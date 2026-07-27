@@ -75,3 +75,13 @@ body {
     background: #cbd5e1;
     border-radius: 6px;
 }
+
+/* Blinking-yellow highlight for MPS lots with a pending reschedule request */
+@keyframes mps-blink {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.25); background-color: #f59e0b; }
+    50%      { box-shadow: 0 0 0 4px rgba(234, 179, 8, 0.95); background-color: #fde047; }
+}
+.mps-pending {
+    animation: mps-blink 1s ease-in-out infinite;
+    color: #422006;
+}

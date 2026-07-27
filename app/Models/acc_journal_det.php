@@ -13,10 +13,19 @@ class acc_journal_det extends Model
     protected $table = 'acc_journal_det';
     protected $primaryKey = 'id';
     public $incrementing = true;
+    public $timestamps = false;
+
 
     protected $fillable = [
+        'main_id',
+        'coa_id',
         'debit',
-        'memo'
+        'credit',
+        'memo',
     ];
 
+    public function coa()
+    {
+        return $this->belongsTo(acc_coa::class, 'coa_id', 'id');
+    }
 }

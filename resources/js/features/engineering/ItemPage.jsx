@@ -12,7 +12,7 @@ const EMPTY = {
     code: '', part_name: '', type: '', descrip: '', category_id: '', pm: false, active: true,
     o_d: '', i_d: '', thick: '', width: '', height: '', length: '', length_cut: '',
     weight: '', tolerance: '', min_stock: '', max_stock: '',
-    rm_lines: [], pm_lines: [], processes: [], customers: [],
+    rm_lines: [], pm_lines: [], routings: [], customers: [],
 };
 
 const TABS = [
@@ -130,7 +130,7 @@ export default function ItemPage() {
     const [error, setError] = useState('');
 
     const categories = useOptions('categories');
-    const processes = useOptions('processes');
+    const processMains = useOptions('process-mains');
     const contacts = useOptions('contacts');
 
     // Group is a fixed domain: Material / FG (stored in m_i_category / category_id).
@@ -185,7 +185,7 @@ export default function ItemPage() {
             active: !!it.active,
             rm_lines: (it.rm_lines || []).map((l) => ({ mat_id: l.mat_id, length_cut: l.length_cut, length_use: l.length_use, priority: l.priority })),
             pm_lines: (it.pm_lines || []).map((l) => ({ pm_id: l.pm_id, qty: l.qty })),
-            processes: (it.processes || []).map((p) => ({ proc_id: p.proc_id, sequence: p.sequence })),
+            routings: (it.routings || []).map((r) => ({ process_main_id: r.process_main_id, priority: r.priority })),
             customers: (it.customers || []).map((c) => ({
                 cus_id: c.cus_id, priority: c.priority, active: c.active === undefined ? true : !!c.active,
             })),
@@ -199,7 +199,7 @@ export default function ItemPage() {
     /* line editors */
     const addRm = () => set('rm_lines', [...form.rm_lines, { mat_id: '', length_cut: '', length_use: '', priority: form.rm_lines.length + 1 }]);
     const addPm = () => set('pm_lines', [...form.pm_lines, { pm_id: '', qty: 1 }]);
-    const addProc = () => set('processes', [...form.processes, { proc_id: '', sequence: form.processes.length + 1 }]);
+    const addRouting = () => set('routings', [...form.routings, { process_main_id: '', priority: form.routings.length + 1 }]);
     const addCus = () => set('customers', [...form.customers, { cus_id: '', priority: form.customers.length + 1, active: true }]);
     const setLine = (key, i, k, v) => set(key, form[key].map((l, j) => (j === i ? { ...l, [k]: v } : l)));
     const delLine = (key, i) => set(key, form[key].filter((_, j) => j !== i));
@@ -362,26 +362,34 @@ export default function ItemPage() {
                     </div>
                 )}
 
-                {/* Tab 4: Process */}
+                {/* Tab 4: Process — the item's routing options, ranked by priority */}
                 {tab === 'process' && (
-                    <LineTable
-                        title="Urutan Proses (Routing FG)"
-                        subtitle="Urutan proses produksi untuk item FG ini."
-                        onAdd={addProc}
-                        empty="Belum ada proses."
-                        lines={form.processes}
-                        head={['Urutan', 'Proses', '']}
-                        row={(l, i) => (
-                            <>
-                                <td className="w-24 px-2 py-1.5"><input type="number" className="field-input" value={l.sequence ?? ''} onChange={(e) => setLine('processes', i, 'sequence', e.target.value)} /></td>
-                                <td className="min-w-[260px] px-2 py-1.5">
-                                    <Select value={l.proc_id} onChange={(v) => setLine('processes', i, 'proc_id', v)} options={processes.data}
-                                        getValue={(o) => o.id} getLabel={(o) => `${o.code} — ${o.name_p}`} placeholder="— pilih proses —" />
-                                </td>
-                                <td className="px-2 py-1.5"><button type="button" className="rounded p-1.5 text-red-500 hover:bg-red-50" onClick={() => delLine('processes', i)}><Icon name="trash" /></button></td>
-                            </>
-                        )}
-                    />
+                    <div>
+                        <LineTable
+                            title="Pilihan Routing (berdasarkan prioritas)"
+                            subtitle="Item boleh punya beberapa routing; prioritas 1 = default. Routing yang dipakai dipilih saat pembuatan Work Order."
+                            onAdd={addRouting}
+                            empty="Belum ada routing. Tambah minimal satu."
+                            lines={form.routings}
+                            head={['Prioritas', 'Routing Template', 'Langkah', '']}
+                            row={(l, i) => {
+                                const tpl = (processMains.data || []).find((m) => m.id === Number(l.process_main_id));
+                                const steps = [...(tpl?.detail || [])].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+                                return (
+                                    <>
+                                        <td className="w-24 px-2 py-1.5"><input type="number" min="1" className="field-input" value={l.priority ?? i + 1} onChange={(e) => setLine('routings', i, 'priority', e.target.value)} /></td>
+                                        <td className="min-w-[240px] px-2 py-1.5">
+                                            <Select value={l.process_main_id} onChange={(v) => setLine('routings', i, 'process_main_id', v)} options={processMains.data}
+                                                getValue={(o) => o.id} getLabel={(o) => `${o.code} — ${o.name}`} placeholder="— pilih routing —" />
+                                        </td>
+                                        <td className="px-2 py-1.5 text-xs text-slate-500">{steps.length ? steps.map((d) => d.process?.code).join(' → ') : '—'}</td>
+                                        <td className="px-2 py-1.5"><button type="button" className="rounded p-1.5 text-red-500 hover:bg-red-50" onClick={() => delLine('routings', i)}><Icon name="trash" /></button></td>
+                                    </>
+                                );
+                            }}
+                        />
+                        <p className="text-xs text-slate-400">Buat/ubah template di menu <b>Master Routing</b>.</p>
+                    </div>
                 )}
 
                 {/* Tab 5: Customer */}

@@ -13,11 +13,21 @@ class sub_dn_detail extends Model
     protected $table = 'sub_dn_detail';
     protected $primaryKey = 'id';
     public $incrementing = true;
+    public $timestamps = false;   // sub_dn_detail has no timestamps
 
     protected $fillable = [
+        'main_id',
+        'wo_id',
         'item_id',
-        'qty'
+        'serial_id',
+        'pallet_code',
+        'qty',
     ];
+
+    public function main()
+    {
+        return $this->belongsTo(sub_dn_main::class, 'main_id', 'id');
+    }
 
     public function item()
     {

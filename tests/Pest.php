@@ -1,50 +1,67 @@
 <?php
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /*
 |--------------------------------------------------------------------------
 | Test Case
 |--------------------------------------------------------------------------
-|
-| The closure you provide to your test functions is always bound to a specific PHPUnit test
-| case class. By default, that class is "PHPUnit\Framework\TestCase". Of course, you may
-| need to change it using the "pest()" function to bind different classes or traits.
-|
+| Models are pinned to the `mysql` connection over the preserved legacy schema,
+| so feature tests run against the seeded dev database wrapped in a transaction
+| that is rolled back after each test — no pollution, no migration refresh.
 */
 
 pest()->extend(TestCase::class)
- // ->use(RefreshDatabase::class)
+    ->beforeEach(function () {
+        config(['database.default' => 'mysql']);
+        DB::connection('mysql')->beginTransaction();
+    })
+    ->afterEach(function () {
+        DB::connection('mysql')->rollBack();
+    })
     ->in('Feature');
 
 /*
 |--------------------------------------------------------------------------
-| Expectations
+| Helpers
 |--------------------------------------------------------------------------
-|
-| When you're writing tests, you often need to check that values meet certain conditions. The
-| "expect()" function gives you access to a set of "expectations" methods that you can use
-| to assert different things. Of course, you may extend the Expectation API at any time.
-|
 */
 
-expect()->extend('toBeOne', function () {
-    return $this->toBe(1);
-});
-
-/*
-|--------------------------------------------------------------------------
-| Functions
-|--------------------------------------------------------------------------
-|
-| While Pest is very powerful out-of-the-box, you may have some testing code specific to your
-| project that you don't want to repeat in every file. Here you can also expose helpers as
-| global functions to help you to reduce the number of lines of code in your test files.
-|
-*/
-
-function something()
+/** The seeded super-admin (created if missing). */
+function admin(): User
 {
-    // ..
+    return User::firstOrCreate(
+        ['username' => 'admin'],
+        ['name' => 'Administrator', 'email' => 'admin@ab-erp.local', 'identity' => 'ADM-0001', 'password' => bcrypt('password')]
+    );
 }
+
+/** Build a Request bound to the admin user, as controllers receive it. */
+function req(string $method = 'GET', array $params = []): Request
+{
+    $r = Request::create('/test', $method, $params);
+    $r->setUserResolver(fn () => admin());
+
+    return $r;
+}
+
+/** Unwrap an ApiResponse JsonResponse to its `data` payload. */
+function payload($response): mixed
+{
+    $json = json_decode($response->getContent(), true);
+
+    return $json['data'] ?? $json;
+}
+
+/** Ensure a COA account exists (for accounting tests). */
+function coa(string $code, string $group = 'ASSET'): void
+{
+    DB::table('acc_coa')->updateOrInsert(['code' => $code], ['name' => "Test {$code}", 'acc_group' => $group, 'postable' => 1]);
+}
+
+expect()->extend('toBeMoney', function (float $expected) {
+    return $this->toEqualWithDelta($expected, 0.02);
+});

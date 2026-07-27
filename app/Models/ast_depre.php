@@ -14,8 +14,13 @@ class ast_depre extends Model
     protected $primaryKey = 'id';
     public $incrementing = true;
 
+    public $timestamps = false;
+
     protected $fillable = [
-        'amount'
+        'ast_id',
+        'period',
+        'amount',
+        'journal_id',
     ];
 
 }

@@ -20,6 +20,7 @@ class prd_wo_main extends Model
         'customer_id',
         'so_id',
         'fg_id',
+        'process_main_id',
         'mps_id',
         'user_id',
         'qty',
@@ -36,6 +37,12 @@ class prd_wo_main extends Model
     public function fg()
     {
         return $this->belongsTo(m_item::class, 'fg_id', 'id');
+    }
+
+    /** The routing template chosen for this WO (from the item's ranked list). */
+    public function processMain()
+    {
+        return $this->belongsTo(m_process_main::class, 'process_main_id', 'id');
     }
 
     public function mps()

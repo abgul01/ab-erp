@@ -15,7 +15,9 @@ class m_bom_pro extends Model
     public $incrementing = true;
 
     protected $fillable = [
-        'item_id'
+        'item_id',
+        'process_main_id',
+        'priority',
     ];
 
     public function item()
@@ -23,6 +25,13 @@ class m_bom_pro extends Model
         return $this->belongsTo(m_item::class, 'item_id', 'id');
     }
 
+    /** The routing template this item follows (Master Process Main). */
+    public function processMain()
+    {
+        return $this->belongsTo(m_process_main::class, 'process_main_id', 'id');
+    }
+
+    /** Legacy per-item steps — no longer written; kept for old data. */
     public function detail()
     {
         return $this->hasMany(m_bom_pro_det::class, 'id_prim', 'id');

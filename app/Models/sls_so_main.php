@@ -19,9 +19,12 @@ class sls_so_main extends Model
         'date',
         'cus_id',
         'cus_po_no',
+        'po_date',
+        'due_date',
         'currency_id',
         'user_id',
         'status',
+        'note',
     ];
 
     public function cus()

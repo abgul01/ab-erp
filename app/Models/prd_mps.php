@@ -17,6 +17,7 @@ class prd_mps extends Model
     protected $fillable = [
         'plan_date',
         'item_id',
+        'proc_id',
         'qty',
         'machine_id',
         'status',
@@ -30,5 +31,10 @@ class prd_mps extends Model
     public function machine()
     {
         return $this->belongsTo(m_machine::class, 'machine_id', 'id');
+    }
+
+    public function process()
+    {
+        return $this->belongsTo(m_process::class, 'proc_id', 'id');
     }
 }

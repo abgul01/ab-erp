@@ -15,8 +15,10 @@ class m_pricelist_main extends Model
     public $incrementing = true;
 
     protected $fillable = [
+        'code',
         'cus_id',
-        'user_id'
+        'status',
+        'user_id',
     ];
 
     public function cus()
@@ -27,5 +29,10 @@ class m_pricelist_main extends Model
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id', 'id');
+    }
+
+    public function detail()
+    {
+        return $this->hasMany(m_pricelist_det::class, 'main_id', 'id');
     }
 }

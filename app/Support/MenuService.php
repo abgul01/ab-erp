@@ -16,7 +16,7 @@ class MenuService
      */
     public static function treeFor(User $user): array
     {
-        $all = menus::orderBy('id')->get();
+        $all = menus::orderBy('sort')->orderBy('id')->get();
 
         if ($user->isSuperAdmin()) {
             $viewable = $all->pluck('id')->all();

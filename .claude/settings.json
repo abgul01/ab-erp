@@ -54,7 +54,90 @@
       "Bash(php /tmp/plan_test2.php)",
       "Bash(curl -s -o /dev/null http://127.0.0.1:8170/api/v1)",
       "Bash(php \"C:\\\\Users\\\\aliba\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--WEB-laravel-laravel13-ab-erp\\\\fcf73df8-6c1c-4e68-8b4c-0d60bbd500a8\\\\scratchpad\\\\om_test.php\")",
-      "Bash(node -e \"console.log\\(process.version\\)\")"
+      "Bash(node -e \"console.log\\(process.version\\)\")",
+      "Bash(xargs grep -l \"perm\")",
+      "Bash(grep -n 'machines = tr_cut_detail\\\\|->map\\(function \\($d\\)\\\\|'\\\\''start_time'\\\\'' => $d->start_time\\\\|'\\\\''qty_total'\\\\''' app/Http/Controllers/Api/Production/CuttingController.php)",
+      "Bash(timeout 120 php artisan tinker '--execute= *)",
+      "Bash(timeout 40 php artisan tinker --execute='echo \"app.timezone=\".config\\(\"app.timezone\"\\).\" | now=\".now\\(\\)->format\\(\"Y-m-d H:i:s\"\\).\" | UTC=\".now\\(\\)->utc\\(\\)->format\\(\"H:i:s\"\\).PHP_EOL;')",
+      "Bash(timeout 90 php artisan tinker '--execute= *)",
+      "Bash(timeout 60 php artisan tinker '--execute= *)",
+      "Bash(timeout 40 php artisan tinker '--execute= *)",
+      "Bash(python -)",
+      "Bash(timeout 150 php artisan tinker '--execute= *)",
+      "Bash(timeout 40 php artisan tinker '--execute=foreach\\([\"wh_out_main\",\"wh_out_detail\"] as $t\\){ echo $t.\": \".implode\\(\", \", Schema::getColumnListing\\($t\\)\\).PHP_EOL; }')",
+      "Bash(php -l app/Models/m_pricelist_main.php)",
+      "Bash(php -l app/Models/m_pricelist_det.php)",
+      "Bash(php -l app/Models/sls_so_detail.php)",
+      "Bash(php -l app/Http/Controllers/Api/Sales/SoController.php)",
+      "Bash(php -l app/Http/Controllers/Api/Sales/PricelistController.php)",
+      "Bash(npx vite *)",
+      "Bash(php -l database/seeders/DemoDataSeeder.php)",
+      "Bash(php -l app/Support/PricelistService.php)",
+      "Bash(php -l app/Support/LineTax.php)",
+      "Bash(./vendor/bin/pest --compact)",
+      "Bash(grep -ioE \"CREATE TABLE IF NOT EXISTS \\\\`[a-z_]*\\(do|deliver|ship|wh_fg|fg_|rfg|sj_|surat|invoice|ar_|sls_\\)[a-z_]*\\\\`\" docs/erp-mes-schema.sql)",
+      "Bash(grep -ioE \"CREATE TABLE IF NOT EXISTS \\\\`[a-z_]*\\(cost|cogm|coa|gl_|journal|jurnal|acc_|asset|aset|depr|ledger\\)[a-z_]*\\\\`\" docs/erp-mes-schema.sql)",
+      "Bash(grep -nE \"'[A-Z]{2,4}'|prefix|match|case \" app/Support/NumberingService.php)",
+      "Bash(php -l database/seeders/DatabaseSeeder.php)",
+      "Bash(sed -i 's/\\(new PlanningService\\)->routing\\(\\(int\\) \\\\$wo->fg_id\\)/\\(new PlanningService\\)->routing\\(\\(int\\) $wo->fg_id, $wo->process_main_id ? \\(int\\) $wo->process_main_id : null\\)/g' app/Http/Controllers/Api/Production/CuttingController.php app/Http/Controllers/Api/Production/ProcessingController.php)",
+      "Bash(grep -rn '->routing\\(\\(int\\) $wo->fg_id' app/Http/Controllers/Api/Production/CuttingController.php app/Http/Controllers/Api/Production/ProcessingController.php)",
+      "Bash(grep -ioE \"CREATE TABLE IF NOT EXISTS \\\\`[a-z_]*\\(subcon|subkon|sub_|return|retur|mrp|net_req|requirement\\)[a-z_]*\\\\`\" docs/erp-mes-schema.sql)",
+      "Bash(awk \"/CREATE TABLE IF NOT EXISTS \\\\`sls_return\\\\`/{f=1} f{print} f&&/ENGINE=/{exit}\" docs/erp-mes-schema.sql)",
+      "Bash(php -l app/Http/Controllers/Api/Production/MrpController.php)",
+      "Bash(php -l app/Models/prd_mrp_main.php)",
+      "Bash(php -l app/Models/prd_mrp_detail.php)",
+      "Bash(php -l app/Http/Controllers/Api/Production/MppController.php)",
+      "Bash(php -l app/Http/Controllers/Api/Sales/SalesReturnController.php)",
+      "Bash(php -l app/Models/sls_return.php)",
+      "Bash(php -l app/Http/Controllers/Api/Procurement/SubcontController.php)",
+      "Bash(php -l app/Models/sub_dn_main.php)",
+      "Bash(php -l app/Models/sub_dn_detail.php)",
+      "Bash(php -l app/Models/sub_gr_main.php)",
+      "Bash(php -l app/Http/Controllers/Api/Engineering/RouteTimeController.php)",
+      "Bash(php -l app/Support/FgStockService.php)",
+      "Bash(php -l app/Support/PlanningService.php)",
+      "Bash(php -l app/Http/Controllers/Api/Sales/DoController.php)",
+      "Bash(php -l app/Http/Controllers/Api/Wms/FgIncomingController.php)",
+      "Bash(grep -oE \"\\\\b[a-z][a-z-]{2,}\\\\b\")",
+      "Bash(php -l app/Http/Controllers/Api/Wms/FgOutgoingController.php)",
+      "Read(//c/Users/aliba/.claude/skills/graphify/references/**)",
+      "Bash(python -c \"import json,sys; d=json.load\\(open\\(r'D:\\\\WEB\\\\laravel\\\\laravel13\\\\ab-erp\\\\graphify-out\\\\.graphify_chunk_01.json',encoding='utf-8'\\)\\); ids={n['id'] for n in d['nodes']}; print\\('nodes',len\\(d['nodes']\\),'edges',len\\(d['edges']\\),'hyper',len\\(d['hyperedges']\\)\\); bad=[e for e in d['edges'] if e['source'] not in ids or e['target'] not in ids]; print\\('bad edges',bad\\); import re; print\\('bad ids',[i for i in ids if not re.fullmatch\\(r'[a-z0-9_]+',i\\)]\\); print\\('bad hyper',[n for h in d['hyperedges'] for n in h['nodes'] if n not in ids]\\)\")",
+      "PowerShell(graphify export html 2>&1)",
+      "PowerShell(graphify benchmark 2>&1)",
+      "Bash(graphify query *)",
+      "Bash(graphify explain *)",
+      "Bash(php -l app/Support/JournalEngine.php)",
+      "Bash(php -l app/Support/GlPostingService.php)",
+      "Bash(graphify update *)",
+      "Bash(./vendor/bin/pest tests/Unit/LineTaxTest.php tests/Feature/JournalEngineTest.php)",
+      "Bash(APP_ENV=testing DB_CONNECTION=mysql DB_DATABASE=ab-erp php -r ' *)",
+      "Bash(APP_ENV=testing php -r ' *)",
+      "PowerShell(Get-Service | Where-Object { $_.Name -match 'mysql|maria' -or $_.DisplayName -match 'MySQL|MariaDB' } | Select-Object Name, DisplayName, Status | Format-Table -AutoSize; Write-Output '--- listening 3306? ---'; \\(Get-NetTCPConnection -LocalPort 3306 -ErrorAction SilentlyContinue | Select-Object -First 1 State\\) ; Write-Output '--- xampp/wamp mysqld ---'; Get-Process mysqld -ErrorAction SilentlyContinue | Select-Object Id, Path)",
+      "Bash(./vendor/bin/pest)",
+      "Bash(./vendor/bin/pest tests/Feature/CostingServiceTest.php)",
+      "Bash(php -l app/Http/Controllers/Api/Production/MpsController.php)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/aliba/.local/bin/graphify.EXE hook-guard search"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/aliba/.local/bin/graphify.EXE hook-guard read"
+          }
+        ]
+      }
     ]
   }
 }

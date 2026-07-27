@@ -8,6 +8,7 @@ use App\Models\m_item_customer;
 use App\Models\sls_so_main;
 use App\Support\ApiResponse;
 use App\Support\AuditLogger;
+use App\Support\LineTax;
 use App\Support\NumberingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,7 +20,7 @@ use Illuminate\Support\Facades\DB;
  */
 class SoController extends Controller
 {
-    private array $with = ['cus', 'currency', 'user', 'detail.item', 'detail.tax'];
+    private array $with = ['cus', 'currency', 'user', 'detail.item', 'detail.tax', 'detail.pph_tax', 'detail.pricelist_det.main'];
 
     public function index(Request $request)
     {
@@ -62,6 +63,9 @@ class SoController extends Controller
                 'date' => $data['date'],
                 'cus_id' => $data['cus_id'],
                 'cus_po_no' => $data['cus_po_no'] ?? null,
+                'po_date' => $data['po_date'] ?? null,
+                'due_date' => $data['due_date'] ?? null,
+                'note' => $data['note'] ?? null,
                 'currency_id' => $data['currency_id'] ?? null,
                 'user_id' => $request->user()->id,
                 'status' => 'DRAFT',
@@ -87,6 +91,9 @@ class SoController extends Controller
                 'date' => $data['date'],
                 'cus_id' => $data['cus_id'],
                 'cus_po_no' => $data['cus_po_no'] ?? null,
+                'po_date' => $data['po_date'] ?? null,
+                'due_date' => $data['due_date'] ?? null,
+                'note' => $data['note'] ?? null,
                 'currency_id' => $data['currency_id'] ?? null,
             ]);
             $so->detail()->delete();
@@ -167,13 +174,39 @@ class SoController extends Controller
 
     private function syncLines(sls_so_main $so, array $lines): void
     {
+        $taxes = DB::table('m_tax')->get()->keyBy('id');
+        $defaultPpn = DB::table('m_tax')->where('code', 'PPN-DN')->value('id');
+        $defaultPph = DB::table('m_tax')->where('code', 'like', 'PPH-%')->orderBy('id')->value('id');
+
         foreach ($lines as $l) {
+            $ppnOn = (int) ($l['ppn'] ?? 0) === 1;
+            $pphOn = (int) ($l['pph'] ?? 0) === 1;
+            $ppnId = $l['tax_id'] ?? ($ppnOn ? $defaultPpn : null);
+            $pphId = $l['pph_tax_id'] ?? ($pphOn ? $defaultPph : null);
+
+            $subtotal = round(((float) ($l['price'] ?? 0)) * ((int) $l['qty']), 2);
+            $tax = LineTax::compute(
+                $subtotal,
+                $ppnOn && $ppnId ? $taxes->get($ppnId) : null,
+                $pphOn && $pphId ? $taxes->get($pphId) : null,
+            );
+
             $so->detail()->create([
                 'item_id' => $l['item_id'],
+                'po_detail_code' => $l['po_detail_code'] ?? null,
                 'qty' => $l['qty'],
                 'price' => $l['price'] ?? 0,
-                'tax_id' => $l['tax_id'] ?? null,
+                'pricelist_det_id' => $l['pricelist_det_id'] ?? null,
+                'tax_id' => $ppnOn ? $ppnId : null,
+                'pph_tax_id' => $pphOn ? $pphId : null,
+                'dpp' => $tax['dpp'],
+                'ppn_value' => $tax['ppn_value'],
+                'pph_value' => $tax['pph_value'],
+                'local_mat' => (int) ($l['local_mat'] ?? 0),
+                'ppn' => (int) $ppnOn,
+                'pph' => (int) $pphOn,
                 'due_date' => $l['due_date'] ?? null,
+                'note' => $l['note'] ?? null,
                 'qty_delivered' => 0,
             ]);
         }
@@ -182,16 +215,26 @@ class SoController extends Controller
     private function validateSo(Request $request): array
     {
         return $request->validate([
-            'date' => ['required', 'date'],
+            'date' => ['required', 'date'],                       // tanggal SO dibuat
+            'po_date' => ['nullable', 'date'],                    // tanggal PO customer diterima
+            'due_date' => ['nullable', 'date'],                   // due date order
             'cus_id' => ['required', 'integer', 'exists:m_contacts,id'],
             'cus_po_no' => ['nullable', 'string', 'max:50'],
             'currency_id' => ['nullable', 'integer', 'exists:m_currency,id'],
+            'note' => ['nullable', 'string', 'max:200'],
             'lines' => ['array'],
             'lines.*.item_id' => ['required', 'integer', 'exists:m_item,id'],
+            'lines.*.po_detail_code' => ['nullable', 'string', 'max:50'],
             'lines.*.qty' => ['required', 'integer', 'min:1'],
             'lines.*.price' => ['nullable', 'numeric', 'min:0'],
             'lines.*.tax_id' => ['nullable', 'integer', 'exists:m_tax,id'],
+            'lines.*.pph_tax_id' => ['nullable', 'integer', 'exists:m_tax,id'],
+            'lines.*.pricelist_det_id' => ['nullable', 'integer', 'exists:m_pricelist_det,id'],
+            'lines.*.local_mat' => ['nullable', 'boolean'],
+            'lines.*.ppn' => ['nullable', 'boolean'],
+            'lines.*.pph' => ['nullable', 'boolean'],
             'lines.*.due_date' => ['nullable', 'date'],
+            'lines.*.note' => ['nullable', 'string', 'max:200'],
         ]);
     }
 }

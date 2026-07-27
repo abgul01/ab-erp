@@ -49,7 +49,7 @@ export default function MppPage() {
     const remove = useMutation({ mutationFn: async (id) => api.delete(`/mpp/${id}`), onSuccess: () => { invalidate(); setModal(null); }, onError: (e) => alert(apiError(e)) });
     const generate = useMutation({
         mutationFn: async (body) => api.post('/mpp/generate', body),
-        onSuccess: (res) => { invalidate(); const d = res.data.data; alert(`Generate MPP ${fmtPeriod(d.period)}: +${d.created} baru, ${d.updated} diperbarui, ${d.skipped_approved} dilewati (approved).`); },
+        onSuccess: (res) => { invalidate(); const d = res.data.data; const label = (d.periods || []).map(fmtPeriod).join(', '); alert(`Generate MPP ${label}: +${d.created} baru, ${d.updated} diperbarui, ${d.skipped_approved} dilewati (approved).`); },
         onError: (e) => alert(apiError(e)),
     });
 
@@ -72,11 +72,12 @@ export default function MppPage() {
                 <div className="flex flex-wrap items-center gap-2">
                     <label className="text-sm text-slate-500">Mulai bulan</label>
                     <input type="month" className="field-input w-40" value={startYm} onChange={(e) => setStartYm(e.target.value)} />
-                    {can('mpp', 'create') && <button className="btn btn-ghost" onClick={() => { setGen({ period: start, source: 'MAX' }); setGenOpen(true); }}><Icon name="calculator" /> Generate</button>}
+                    {can('mpp', 'create') && <button className="btn btn-ghost" onClick={() => generate.mutate({ periods, source: 'MAX' })} disabled={generate.isPending}>{generate.isPending ? <Icon name="spinner" className="h-4 w-4 animate-spin" /> : <Icon name="calculator" />} Generate 3 Bulan</button>}
+                    {can('mpp', 'create') && <button className="btn btn-ghost" onClick={() => { setGen({ period: start, source: 'MAX' }); setGenOpen(true); }}><Icon name="calculator" /> Generate 1 Bulan…</button>}
                     {can('mpp', 'create') && <button className="btn btn-primary" onClick={() => openCreate()}><Icon name="plus" /> Tambah</button>}
                 </div>
             </div>
-            <p className="mb-3 text-xs text-amber-600">Catatan: Generate memakai demand (Forecast/SO) dan belum mengurangi stok FG — modul WMS FG belum ada, jadi stok dianggap 0.</p>
+            <p className="mb-3 text-xs text-slate-400">Kebutuhan produksi = max(Σ SO approved, Σ Forecast FINAL) − on-process (WO yang sudah masuk proses pertama). Hanya baris DRAFT yang ditimpa; yang APPROVED dipertahankan. Setelah approve, buka MPS lalu klik <b>Generate dari MPP</b>.</p>
 
             <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
                 <table className="w-full text-sm">

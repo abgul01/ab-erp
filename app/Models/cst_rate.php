@@ -14,9 +14,13 @@ class cst_rate extends Model
     protected $primaryKey = 'id';
     public $incrementing = true;
 
+    public $timestamps = false;
+
     protected $fillable = [
+        'period',
         'rate_type',
-        'rate_per_hour'
+        'process_id',
+        'rate_per_hour',
     ];
 
 }

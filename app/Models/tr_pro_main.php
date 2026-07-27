@@ -29,6 +29,11 @@ class tr_pro_main extends Model
         'date',
         'start_time',
         'end_time',
+        'finish',
+        'cont_pro',
+        'sq_process',
+        'subcont',
+        'shift_id',
         'client_uuid'
     ];
 

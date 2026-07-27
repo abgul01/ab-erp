@@ -15,12 +15,22 @@ class sls_return extends Model
     public $incrementing = true;
 
     protected $fillable = [
+        'code',
+        'date',
         'do_id',
-        'reason'
+        'item_id',
+        'qty',
+        'reason',
+        'status',
     ];
 
     public function do()
     {
         return $this->belongsTo(sls_do_main::class, 'do_id', 'id');
+    }
+
+    public function item()
+    {
+        return $this->belongsTo(m_item::class, 'item_id', 'id');
     }
 }

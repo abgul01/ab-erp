@@ -15,17 +15,31 @@ class sls_inv_main extends Model
     public $incrementing = true;
 
     protected $fillable = [
+        'code',
+        'date',
         'cus_id',
+        'dpp',
         'dpp_nilai_lain',
         'vat',
         'total',
         'tax_inv_no',
         'due_date',
-        'status'
+        'user_id',
+        'status',
     ];
+
+    public function detail()
+    {
+        return $this->hasMany(sls_inv_detail::class, 'main_id', 'id');
+    }
 
     public function cus()
     {
         return $this->belongsTo(m_contacts::class, 'cus_id', 'id');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id', 'id');
     }
 }

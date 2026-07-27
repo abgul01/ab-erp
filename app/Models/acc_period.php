@@ -13,9 +13,12 @@ class acc_period extends Model
     protected $table = 'acc_period';
     protected $primaryKey = 'id';
     public $incrementing = true;
+    public $timestamps = false;
+
 
     protected $fillable = [
-        'status'
+        'period',
+        'status',
     ];
 
 }

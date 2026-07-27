@@ -16,8 +16,11 @@ class prd_wip extends Model
 
     protected $fillable = [
         'code',
+        'no_dp',
         'wo_id',
-        'item_id'
+        'item_id',
+        'user_id',
+        'date'
     ];
 
     public function wo()

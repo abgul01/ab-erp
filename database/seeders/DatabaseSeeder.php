@@ -86,6 +86,8 @@ class DatabaseSeeder extends Seeder
             ]],
             ['Engineering', '0', 'wrench', [
                 ['Item Master', 'items', 'box'],
+                ['Master Routing', 'process-mains', 'workflow'],
+                ['Cycle Time (Routing)', 'route-times', 'cog'],
             ]],
             ['Procurement', '0', 'shopping-cart', [
                 ['Purchase Requisition', 'pr', 'clipboard-list'],
@@ -95,6 +97,8 @@ class DatabaseSeeder extends Seeder
                 ['Landed Cost', 'landed-costs', 'calculator'],
                 ['GR Reject', 'gr-rejects', 'undo'],
                 ['AP Invoice', 'ap-invoices', 'receipt'],
+                ['Subcont — Kirim', 'subcont-dn', 'send'],
+                ['Subcont — Terima', 'subcont-gr', 'package-check'],
             ]],
             ['WMS Raw Material', '0', 'warehouse', [
                 ['Master Rak', 'racks', 'rows'],
@@ -103,29 +107,61 @@ class DatabaseSeeder extends Seeder
                 ['Remaining / Tankan', 'remaining-rm', 'undo'],
                 ['Stok RM', 'stock-rm', 'boxes'],
             ]],
+            ['WMS Finished Goods', '0', 'boxes', [
+                ['Incoming FG', 'incoming-fg', 'package-check'],
+                ['Outgoing FG', 'outgoing-fg', 'send'],
+                ['Stok FG', 'stock-fg', 'boxes'],
+            ]],
             ['Order Management', '0', 'tags', [
                 ['Forecast', 'forecasts', 'calendar'],
+                ['Pricelist Customer', 'pricelists', 'coins'],
                 ['Sales Order', 'sales-orders', 'file-text'],
+                ['Delivery Order', 'delivery-orders', 'send'],
+                ['Sales Invoice', 'sales-invoices', 'receipt'],
+                ['Sales Return', 'sales-returns', 'undo'],
+            ]],
+            // planning comes before the floor that executes it
+            ['Planning Control', '0', 'calendar', [
+                ['MPP (Rencana Bulanan)', 'mpp', 'calendar'],
+                ['MRP (Kebutuhan Material)', 'mrp', 'calculator'],
+                ['MPS (Jadwal Produksi)', 'mps', 'workflow'],
+                ['Persetujuan Jadwal MPS', 'mps-approvals', 'check'],
+            ]],
+            ['Costing & Asset', '0', 'calculator', [
+                ['Tarif Biaya', 'cost-rates', 'percent'],
+                ['COGM (Biaya Produksi)', 'cogm', 'calculator'],
+                ['Kategori Aset', 'asset-categs', 'layers'],
+                ['Aset & Depresiasi', 'assets', 'scale'],
+            ]],
+            ['Accounting', '0', 'database', [
+                ['Chart of Accounts', 'coa', 'file-text'],
+                ['Periode Akuntansi', 'acc-periods', 'calendar'],
+                ['Jurnal & Buku Besar', 'journals', 'database'],
+                ['Pembayaran AP', 'ap-payments', 'receipt'],
+                ['Penerimaan AR', 'ar-receipts', 'coins'],
             ]],
             ['Manufacturing', '0', 'factory', [
-                ['MPP (Rencana Bulanan)', 'mpp', 'calendar'],
-                ['MPS (Jadwal Produksi)', 'mps', 'workflow'],
                 ['Work Order', 'work-orders', 'clipboard-list'],
+                ['MES — Cutting', 'mes-cutting', 'workflow'],
+                ['MES — Processing', 'mes-processing', 'cog'],
+                ['MES — Keputusan Abnormal', 'mes-abnormal', 'ban'],
+                ['MES — Aktual vs Rencana', 'mes-report', 'calculator'],
             ]],
         ];
 
         $links = [];
-        foreach ($tree as [$name, $link, $icon, $children]) {
-            $parent = menus::firstOrCreate(
-                ['name' => $name, 'parent_id' => 0],
-                ['link' => $link, 'icon' => $icon]
-            );
-            foreach ($children as [$cName, $cLink, $cIcon]) {
-                $child = menus::firstOrCreate(
-                    ['name' => $cName, 'parent_id' => $parent->id],
-                    ['link' => $cLink, 'icon' => $cIcon]
-                );
-                $links[$cLink] = $child->id;
+        foreach ($tree as $rootSort => [$name, $link, $icon, $children]) {
+            $parent = menus::firstOrCreate(['name' => $name, 'parent_id' => 0], ['link' => $link, 'icon' => $icon]);
+            $parent->update(['icon' => $icon, 'sort' => $rootSort]);
+
+            foreach ($children as $childSort => [$cName, $cLink, $cIcon]) {
+                // Match on the LINK, not (name, parent): that way a menu can be
+                // renamed or moved to another group without the seeder creating
+                // a duplicate and orphaning the old row (with its permissions).
+                menus::firstOrNew(['link' => $cLink])
+                    ->fill(['name' => $cName, 'parent_id' => $parent->id, 'icon' => $cIcon, 'sort' => $childSort])
+                    ->save();
+                $links[$cLink] = menus::where('link', $cLink)->value('id');
             }
         }
 
@@ -140,11 +176,15 @@ class DatabaseSeeder extends Seeder
      */
     private function seedPermissions(User $operator, array $menuLinks): void
     {
-        $full = ['categories', 'uoms', 'currencies', 'taxes', 'makers', 'machines', 'contact-categories', 'contacts', 'processes',
-            'pr', 'po', 'grn', 'quotas', 'landed-costs', 'gr-rejects', 'ap-invoices',
-            'racks', 'incoming-rm', 'outgoing-rm', 'remaining-rm', 'stock-rm', 'mpp', 'mps', 'work-orders',
-            'forecasts', 'sales-orders'];
-        $viewOnly = ['items'];
+        $full = ['categories', 'uoms', 'currencies', 'taxes', 'makers', 'machines', 'contact-categories', 'contacts', 'processes', 'process-mains',
+            'pr', 'po', 'grn', 'quotas', 'landed-costs', 'gr-rejects', 'ap-invoices', 'subcont-dn', 'subcont-gr',
+            'racks', 'incoming-rm', 'outgoing-rm', 'remaining-rm', 'stock-rm', 'mpp', 'mrp', 'mps', 'work-orders',
+            'incoming-fg', 'outgoing-fg', 'stock-fg', 'delivery-orders', 'sales-invoices',
+            'forecasts', 'sales-orders', 'pricelists', 'sales-returns', 'route-times', 'mes-cutting', 'mes-processing', 'mes-abnormal', 'mes-report',
+            'cost-rates', 'cogm', 'asset-categs', 'assets',
+            'coa', 'acc-periods', 'journals', 'ap-payments', 'ar-receipts'];
+        // operator can request reschedules (mps edit) & watch approvals, but not approve them
+        $viewOnly = ['items', 'mps-approvals'];
 
         foreach ($menuLinks as $link => $menuId) {
             $isFull = in_array($link, $full, true);
@@ -197,6 +237,15 @@ class DatabaseSeeder extends Seeder
             'name' => 'PPN Dalam Negeri (Non-Mewah)', 'rate_pct' => 12.0000,
             'dpp_factor' => 0.916667, 'is_luxury' => 0, 'effective_from' => '2025-01-01',
         ]);
+        // PPh tariffs — starting values, adjust in the Tax Code master as needed
+        DB::table('m_tax')->updateOrInsert(['code' => 'PPH-22'], [
+            'name' => 'PPh Pasal 22 (industri baja)', 'rate_pct' => 0.3000,
+            'dpp_factor' => 1.000000, 'is_luxury' => 0, 'effective_from' => '2025-01-01',
+        ]);
+        DB::table('m_tax')->updateOrInsert(['code' => 'PPH-23'], [
+            'name' => 'PPh Pasal 23 (jasa)', 'rate_pct' => 2.0000,
+            'dpp_factor' => 1.000000, 'is_luxury' => 0, 'effective_from' => '2025-01-01',
+        ]);
         DB::table('m_tax')->updateOrInsert(['code' => 'PPN-LX'], [
             'name' => 'PPN Barang Mewah', 'rate_pct' => 12.0000,
             'dpp_factor' => 1.000000, 'is_luxury' => 1, 'effective_from' => '2025-01-01',
@@ -215,6 +264,8 @@ class DatabaseSeeder extends Seeder
             ['DRL', 'Drilling', 'Pengeboran'],
             ['WLD', 'Welding', 'Pengelasan'],
             ['PLT', 'Plating', 'Pelapisan (subcont)'],
+            // terminal marker: every routing ends here → goods enter the FG warehouse
+            ['FG', 'Finished Goods', 'Masuk gudang barang jadi (langkah akhir routing)'],
         ];
         foreach ($processes as [$code, $name, $desc]) {
             DB::table('m_process')->updateOrInsert(['code' => $code], [

@@ -13,9 +13,17 @@ class prd_mrp_main extends Model
     protected $table = 'prd_mrp_main';
     protected $primaryKey = 'id';
     public $incrementing = true;
+    public $timestamps = false;   // has created_at only, set explicitly
 
     protected $fillable = [
-        'status'
+        'run_date',
+        'user_id',
+        'status',
+        'created_at',
     ];
 
+    public function detail()
+    {
+        return $this->hasMany(prd_mrp_detail::class, 'main_id', 'id');
+    }
 }
