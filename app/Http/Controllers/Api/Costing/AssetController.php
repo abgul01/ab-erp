@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers\Api\Costing;
 
+use App\Exceptions\BizException;
 use App\Http\Controllers\Controller;
 use App\Models\ast_depre;
 use App\Models\ast_main;
+use App\Models\m_asset_categ;
 use App\Support\ApiResponse;
 use App\Support\AuditLogger;
+use App\Support\JournalEngine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -72,34 +75,116 @@ class AssetController extends Controller
     }
 
     /** Post one month of straight-line depreciation for the period. */
-    public function depreciate(Request $request)
+    /**
+     * Retire an asset: dispose, transfer out, or write off.
+     *
+     * Depreciation already booked stays where it is; the gain or loss is the
+     * proceeds against what was left on the books, which is what the journal
+     * records. The asset is marked rather than deleted — its history is part of
+     * the fixed-asset register.
+     */
+    public function retire(Request $request, int $id)
     {
-        $data = $request->validate(['period' => ['required', 'regex:/^\d{6}$/']]);
-        $period = $data['period'];
-        $periodEnd = Carbon::createFromFormat('Ym', $period)->endOfMonth();
+        $data = $request->validate([
+            'action' => ['required', 'in:DISPOSED,TRANSFERRED,RETIRED'],
+            'date' => ['required', 'date'],
+            'proceeds' => ['nullable', 'numeric', 'min:0'],
+            'reason' => ['required', 'string', 'max:300'],
+        ]);
 
-        $assets = ast_main::where('status', 'ACTIVE')->get();
-        $posted = DB::transaction(function () use ($assets, $period, $periodEnd, $request) {
-            $count = 0;
-            foreach ($assets as $a) {
-                $life = (int) $a->useful_life;
-                if ($life <= 0 || Carbon::parse($a->acq_date)->gt($periodEnd)) {
-                    continue;   // not yet in service
-                }
-                $already = (int) ast_depre::where('ast_id', $a->id)->count();
-                if ($already >= $life) {
-                    continue;   // fully depreciated
-                }
-                $monthly = round((float) $a->acq_cost / $life, 2);
-                ast_depre::updateOrCreate(['ast_id' => $a->id, 'period' => $period], ['amount' => $monthly]);
-                $count++;
+        $asset = ast_main::withSum('depre as depre_total', 'amount')->findOrFail($id);
+
+        if (in_array($asset->status, ['DISPOSED', 'TRANSFERRED', 'RETIRED'], true)) {
+            throw BizException::make('ASSET_RETIRED', "Aset {$asset->code} sudah berstatus {$asset->status}.");
+        }
+
+        $bookValue = round((float) $asset->acq_cost - (float) ($asset->depre_total ?? 0), 2);
+        $proceeds = (float) ($data['proceeds'] ?? 0);
+        $gainLoss = round($proceeds - $bookValue, 2);
+
+        DB::transaction(function () use ($asset, $data, $proceeds, $gainLoss, $request) {
+            $asset->update(['status' => $data['action']]);
+
+            $lines = [
+                ['coa' => '1590', 'debit' => round((float) ($asset->depre_total ?? 0), 2), 'memo' => 'Akum. penyusutan dilepas'],
+                ['coa' => '1500', 'credit' => round((float) $asset->acq_cost, 2), 'memo' => "Aset {$asset->code} dilepas"],
+            ];
+            if ($proceeds > 0) {
+                $lines[] = ['coa' => '1100', 'debit' => $proceeds, 'memo' => 'Hasil pelepasan aset'];
             }
-            AuditLogger::record($request, "Hitung depresiasi {$period}: {$count} aset");
+            // Balancing side: a shortfall is a loss, a surplus a gain.
+            $lines[] = $gainLoss < 0
+                ? ['coa' => '6910', 'debit' => abs($gainLoss), 'memo' => 'Rugi pelepasan aset']
+                : ['coa' => '4900', 'credit' => $gainLoss, 'memo' => 'Laba pelepasan aset'];
 
-            return $count;
+            JournalEngine::post(
+                'ASSET_RETIRE', $asset->id, $data['date'], 'ADJ', $lines,
+                "{$data['action']} aset {$asset->code}: {$data['reason']}",
+                (int) $request->user()->id,
+            );
         });
 
-        return ApiResponse::item(['period' => $period, 'posted' => $posted]);
+        AuditLogger::record($request, "{$data['action']} aset {$asset->code}: {$data['reason']}", $asset->code);
+
+        return ApiResponse::item([
+            'code' => $asset->code,
+            'status' => $data['action'],
+            'book_value' => $bookValue,
+            'proceeds' => $proceeds,
+            'gain_loss' => $gainLoss,
+        ]);
+    }
+
+    public function depreciate(Request $request)
+    {
+        $data = $request->validate([
+            'period' => ['required_without:periods', 'regex:/^\d{6}$/'],
+            'periods' => ['required_without:period', 'array', 'min:1', 'max:12'],
+            'periods.*' => ['regex:/^\d{6}$/'],
+        ]);
+
+        // Catching up several months at once is the normal case after a
+        // migration or a late close, so the months are processed in order.
+        $periods = collect($data['periods'] ?? [$data['period']])->unique()->sort()->values()->all();
+        $assets = ast_main::where('status', 'ACTIVE')->get();
+
+        $byPeriod = DB::transaction(function () use ($assets, $periods, $request) {
+            $result = [];
+
+            foreach ($periods as $period) {
+                $periodEnd = Carbon::createFromFormat('Ym', $period)->endOfMonth();
+                $count = 0;
+
+                foreach ($assets as $a) {
+                    $life = (int) $a->useful_life;
+                    if ($life <= 0 || Carbon::parse($a->acq_date)->gt($periodEnd)) {
+                        continue;   // not yet in service
+                    }
+                    // Months already booked, counted fresh each period so a
+                    // multi-month catch-up stops at the end of the asset's life.
+                    $already = (int) ast_depre::where('ast_id', $a->id)->count();
+                    if ($already >= $life) {
+                        continue;   // fully depreciated
+                    }
+                    $monthly = round((float) $a->acq_cost / $life, 2);
+                    ast_depre::updateOrCreate(['ast_id' => $a->id, 'period' => $period], ['amount' => $monthly]);
+                    $count++;
+                }
+
+                $result[$period] = $count;
+            }
+
+            AuditLogger::record($request, 'Hitung depresiasi '.implode(', ', $periods).': '.array_sum($result).' baris');
+
+            return $result;
+        });
+
+        return ApiResponse::item([
+            'periods' => $periods,
+            'period' => $periods[0],
+            'posted' => array_sum($byPeriod),
+            'by_period' => $byPeriod,
+        ]);
     }
 
     private function validateRow(Request $request, ?int $id = null): array
@@ -116,7 +201,7 @@ class AssetController extends Controller
         ]);
         // default useful life from the category when not given
         if (empty($data['useful_life'])) {
-            $data['useful_life'] = (int) \App\Models\m_asset_categ::whereKey($data['categ_id'])->value('useful_life');
+            $data['useful_life'] = (int) m_asset_categ::whereKey($data['categ_id'])->value('useful_life');
         }
         $data['status'] = $data['status'] ?? 'ACTIVE';
 

@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\m_quota_item;
 use App\Models\prc_po_main;
 use App\Support\ApiResponse;
+use App\Support\ApprovalEngine;
 use App\Support\AuditLogger;
 use App\Support\NumberingService;
 use App\Support\QuotaService;
@@ -22,7 +23,9 @@ use Illuminate\Validation\Rule;
 class PoController extends Controller
 {
     private array $with = ['ven', 'quota', 'currency', 'user', 'detail.item', 'detail.uom', 'detail.prDetail'];
+
     private const PO_TYPES = ['RM', 'GENERAL', 'NPD', 'SERVICE', 'SUBCONT', 'ASSET'];
+
     private const SOURCES = ['LOCAL', 'IMPORT'];
 
     public function index(Request $request)
@@ -143,10 +146,10 @@ class PoController extends Controller
                 $line = $existing[$id];
                 $recv = (int) $line->qty_received;
                 if ((int) $l['qty'] < $recv) {
-                    throw BizException::make('PO_QTY_LT_RECV', 'Baris #' . ($n + 1) . ": qty ({$l['qty']}) tidak boleh lebih kecil dari qty yang sudah diterima ({$recv}).");
+                    throw BizException::make('PO_QTY_LT_RECV', 'Baris #'.($n + 1).": qty ({$l['qty']}) tidak boleh lebih kecil dari qty yang sudah diterima ({$recv}).");
                 }
                 if ($recv > 0 && (int) $l['item_id'] !== (int) $line->item_id) {
-                    throw BizException::make('PO_ITEM_LOCKED', 'Baris #' . ($n + 1) . ': item tidak dapat diganti karena sudah ada penerimaan.');
+                    throw BizException::make('PO_ITEM_LOCKED', 'Baris #'.($n + 1).': item tidak dapat diganti karena sudah ada penerimaan.');
                 }
                 $line->update([
                     'item_id' => $l['item_id'],
@@ -200,14 +203,14 @@ class PoController extends Controller
         return ApiResponse::item(['message' => 'PO berhasil dihapus.']);
     }
 
-    public function approve(Request $request, int $id)
+    public function submit(Request $request, int $id)
     {
         $po = prc_po_main::with('detail')->findOrFail($id);
         if ($po->status !== 'DRAFT') {
-            throw BizException::make('PO_BAD_STATE', 'Hanya PO DRAFT yang dapat di-approve.');
+            throw BizException::make('PO_BAD_STATE', 'Hanya PO DRAFT yang dapat disubmit.');
         }
         if ($po->detail->isEmpty()) {
-            throw BizException::make('PO_EMPTY', 'PO tanpa baris item tidak dapat di-approve.');
+            throw BizException::make('PO_EMPTY', 'PO tanpa baris item tidak dapat disubmit.');
         }
 
         DB::transaction(function () use ($po, $request) {
@@ -219,11 +222,26 @@ class PoController extends Controller
                 }
                 $quota->reservePo($po->quota_id, $po->id, $reserveTon, $request->user()->id);
             }
-            // Approved PO starts OPEN (belum ada kedatangan). Advances to
-            // INPROGRESS / CLOSE automatically as goods are received (see GR).
-            $po->update(['status' => 'OPEN']);
-            AuditLogger::record($request, "Approve PO {$po->code}", $po->code);
+            $po->submitForApproval();
+            AuditLogger::record($request, "Submit PO {$po->code}", $po->code);
         });
+
+        return ApiResponse::item($po->load($this->with));
+    }
+
+    public function approve(Request $request, int $id)
+    {
+        $po = prc_po_main::findOrFail($id);
+        if ($po->status !== 'SUBMITTED') {
+            throw BizException::make('PO_BAD_STATE', 'PO harus berstatus SUBMITTED untuk di-approve.');
+        }
+        $engine = app(ApprovalEngine::class);
+        $engine->approve($po, $request->user(), $request->input('note'));
+
+        $po->fresh();
+        if ($po->status === 'APPROVED') {
+            $po->update(['status' => 'OPEN']);
+        }
 
         return ApiResponse::item($po->load($this->with));
     }
@@ -316,10 +334,10 @@ class PoController extends Controller
         $allowed = m_quota_item::where('quota_id', $data['quota_id'])->pluck('item_id')->all();
         foreach ($data['lines'] ?? [] as $i => $l) {
             if (! in_array((int) $l['item_id'], $allowed, true)) {
-                throw BizException::make('QUOTA_ITEM', "Baris #" . ($i + 1) . ": item tidak terdaftar pada kuota terpilih.");
+                throw BizException::make('QUOTA_ITEM', 'Baris #'.($i + 1).': item tidak terdaftar pada kuota terpilih.');
             }
             if (($this->estFields($l)['est_weight'] ?? 0) <= 0) {
-                throw BizException::make('QUOTA_WEIGHT', "Baris #" . ($i + 1) . ": estimasi berat (kg/satuan) wajib diisi untuk PO impor.");
+                throw BizException::make('QUOTA_WEIGHT', 'Baris #'.($i + 1).': estimasi berat (kg/satuan) wajib diisi untuk PO impor.');
             }
         }
     }

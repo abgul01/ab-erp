@@ -17,6 +17,19 @@ class CheckPermission
     {
         $user = $request->user();
 
+        // Supplier portal accounts are confined to /api/v1/vendor. Every internal
+        // endpoint is guarded by this middleware, so refusing here is what keeps
+        // the two populations apart regardless of the permission rows they hold.
+        if ($user?->isVendor()) {
+            return response()->json([
+                'errors' => [[
+                    'code' => 'VENDOR_SCOPE',
+                    'message' => 'Akun vendor hanya dapat mengakses portal vendor.',
+                    'field' => null,
+                ]],
+            ], 403);
+        }
+
         if (! $user || ! $user->canDo($menuLink, $action)) {
             return response()->json([
                 'errors' => [[

@@ -2,16 +2,20 @@
 
 namespace App\Models;
 
+use App\Support\HasApproval;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class prc_po_main extends Model
 {
-    use HasFactory;
+    use HasApproval, HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'prc_po_main';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [

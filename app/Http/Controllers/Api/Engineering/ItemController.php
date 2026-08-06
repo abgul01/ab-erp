@@ -9,6 +9,7 @@ use App\Models\m_item;
 use App\Models\m_item_customer;
 use App\Support\ApiResponse;
 use App\Support\AuditLogger;
+use App\Support\ItemLifecycle;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -28,7 +29,9 @@ class ItemController extends CrudController
 {
     /** Flat m_item columns owned by the Main + Detail tabs. */
     private const FLAT = [
-        'code', 'part_name', 'type', 'descrip', 'category_id',
+        // `type` tidak ada di sini: golongan disimpulkan di mutate(), bukan
+        // diterima dari klien. `category_id` pun mengikutinya.
+        'code', 'part_name', 'shape', 'family_id', 'descrip',
         'o_d', 'i_d', 'thick', 'width', 'height', 'length', 'length_cut',
         'weight', 'tolerance', 'min_stock', 'max_stock', 'pm', 'active',
     ];
@@ -48,16 +51,82 @@ class ItemController extends CrudController
         return ['code', 'part_name', 'descrip'];
     }
 
+    /**
+     * Daftar item, dapat disaring per siklus hidup.
+     *
+     * Layar master menampilkan semuanya — part yang masih uji coba justru perlu
+     * terlihat di sana. Yang menyaring adalah pemilih item di layar operasional,
+     * dengan `?lifecycle=MASSPRO`, supaya part yang belum lulus uji tidak
+     * tersedia untuk dipesan, dijual, atau dijadwalkan.
+     */
+    public function index(Request $request)
+    {
+        if ($lifecycle = $request->query('lifecycle')) {
+            $request->validate(['lifecycle' => ['in:'.implode(',', ItemLifecycle::ALL)]]);
+
+            $rows = m_item::query()
+                ->where('lifecycle', $lifecycle)
+                ->when($request->boolean('active_only'), fn ($q) => $q->where('active', 1))
+                ->when(trim((string) $request->query('q', '')), fn ($q, $s) => $q->where(fn ($w) => $w
+                    ->where('code', 'like', "%{$s}%")
+                    ->orWhere('part_name', 'like', "%{$s}%")))
+                ->orderBy('code')
+                ->paginate(min(max((int) $request->query('per_page', 20), 1), 500));
+
+            return ApiResponse::paginated($rows);
+        }
+
+        return parent::index($request);
+    }
+
+    /** Golongan yang dipilih pengguna. RM vs PM dibedakan centang PM, bukan pilihan ketiga. */
+    public const GROUPS = ['MATERIAL', 'FG'];
+
+    /** Bentuk material — atribut fisik, bukan penggolongan. */
+    public const SHAPES = ['Pipe', 'Roundbar', 'Square Pipe', 'Square Bar', 'Plat Bar', 'Other'];
+
+    /**
+     * Golongan tersimpan (`type`) diturunkan dari pilihan Group dan centang PM.
+     *
+     * Satu sumber kebenaran: layar hanya menanyakan dua hal yang memang diketahui
+     * orang gudang — ini material atau barang jadi, dan apakah ia komponen —
+     * lalu sistem yang menyimpulkan RM, PM, atau FG. Membiarkan ketiganya
+     * dipilih langsung membuka kemungkinan "FG yang dicentang PM", yang tidak
+     * berarti apa-apa.
+     */
+    public static function typeFor(string $group, bool $pm): string
+    {
+        if ($group === 'FG') {
+            return 'FG';
+        }
+
+        return $pm ? 'PM' : 'RM';
+    }
+
+    /** Kebalikannya, untuk mengisi formulir dari data yang sudah ada. */
+    public static function groupOf(?string $type): string
+    {
+        return $type === 'FG' ? 'FG' : 'MATERIAL';
+    }
+
     protected function rules(Request $request, ?int $id = null): array
     {
         return [
             // --- Tab 1: Main ---
             'code' => ['required', 'string', 'max:50', Rule::unique('m_item', 'code')->ignore($id)],
             'part_name' => ['required', 'string', 'max:50'],
-            'type' => ['required', 'string', Rule::in(['Pipe', 'Roundbar', 'Square Pipe', 'Square Bar', 'Plat Bar', 'Other'])],
-            'descrip' => ['nullable', 'string', 'max:150'],
-            'category_id' => ['required', 'integer', 'exists:m_i_category,id'],
+            /*
+             * Golongan barang dipilih, bukan diketik: Material atau FG. Bersama
+             * centang PM ia menentukan `type` — kolom yang dibaca dashboard dan
+             * dipakai NPD untuk menaruh baris BOM pada tabel yang benar.
+             */
+            'group' => ['required', Rule::in(self::GROUPS)],
             'pm' => ['nullable', 'boolean'],
+            // Bentuk material; tidak ada hubungannya dengan golongan.
+            'shape' => ['nullable', Rule::in(self::SHAPES)],
+            // Keluarga produk: pengelompokan komersial untuk laporan margin.
+            'family_id' => ['nullable', 'integer', 'exists:m_product_family,id'],
+            'descrip' => ['nullable', 'string', 'max:150'],
             'active' => ['nullable', 'boolean'],
 
             // --- Tab 2: Detail ---
@@ -103,6 +172,8 @@ class ItemController extends CrudController
         $pros = m_bom_pro::with(['processMain.detail.process'])->where('item_id', $id)->orderBy('priority')->get();
 
         $data = $item->toArray();
+        // Formulir memilih Group; golongan tersimpan diterjemahkan balik ke sana.
+        $data['group'] = self::groupOf($item->type);
         $data['rm_lines'] = $bom ? $bom->rmLines->map(fn ($l) => [
             'mat_id' => $l->mat_id,
             'length_cut' => $l->length_cut,
@@ -183,7 +254,36 @@ class ItemController extends CrudController
         $data['min_stock'] = (int) ($data['min_stock'] ?? 0);
         $data['max_stock'] = (int) ($data['max_stock'] ?? 0);
 
+        /*
+         * Golongan tersimpan disimpulkan, tidak pernah dikirim klien. Ini yang
+         * membuat "Material + PM dicentang" selalu berarti PM, dan mencegah
+         * layar menuliskan bentuk material ke kolom golongan seperti sebelumnya.
+         */
+        $group = $request->input('group', self::groupOf($data['type'] ?? null));
+        $data['type'] = self::typeFor($group, (bool) $data['pm']);
+
+        // Kategori mengikuti golongan supaya keduanya tidak pernah berbeda cerita.
+        $data['category_id'] = $this->categoryFor($data['type'])
+            ?? ($data['category_id'] ?? null);
+
         return $data;
+    }
+
+    /**
+     * Kategori master yang sepadan dengan golongan.
+     *
+     * Dicocokkan lewat nama, bukan id yang dihardcode: nomor kategori berbeda
+     * antar-instalasi, dan yang tetap adalah artinya.
+     */
+    private function categoryFor(string $type): ?int
+    {
+        $needle = match ($type) {
+            'FG' => '(FG)',
+            'PM' => '(PM)',
+            default => '(RM)',
+        };
+
+        return DB::table('m_i_category')->where('name_c', 'like', "%{$needle}%")->value('id');
     }
 
     /**

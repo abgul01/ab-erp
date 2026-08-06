@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\sls_forecast;
 use App\Support\ApiResponse;
 use App\Support\AuditLogger;
+use App\Support\ItemLifecycle;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -66,6 +67,20 @@ class ForecastController extends Controller
     }
 
     private function validateFc(Request $request, ?int $id = null): array
+    {
+        $data = $this->rulesFor($request, $id);
+
+        /*
+         * Forecast adalah salah satu dari tiga sumber permintaan yang dibaca
+         * MRP. Part yang masih uji coba tidak boleh ada di sana — materialnya
+         * akan ikut dibeli untuk barang yang belum tentu jadi.
+         */
+        ItemLifecycle::assertMassPro($data['item_id'], 'forecast');
+
+        return $data;
+    }
+
+    private function rulesFor(Request $request, ?int $id = null): array
     {
         return $request->validate([
             'cus_id' => ['required', 'integer', 'exists:m_contacts,id'],

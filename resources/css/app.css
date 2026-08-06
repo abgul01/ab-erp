@@ -85,3 +85,45 @@ body {
     animation: mps-blink 1s ease-in-out infinite;
     color: #422006;
 }
+
+/* Search result blink — a quick blue pulse to draw attention */
+@keyframes mps-search-blink {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1); }
+    50%      { box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.9), inset 0 0 0 0 rgba(37, 99, 235, 0.2); }
+}
+.mps-found {
+    animation: mps-search-blink 0.6s ease-in-out 3;
+}
+
+/*
+ * Routing flow line on the MPS board.
+ *
+ * A static line tells you which lots belong together but not which way the work
+ * moves. Dashes marching along it do — the eye reads direction from motion far
+ * faster than from arrowheads it has to hunt for.
+ */
+@keyframes mps-flow-march {
+    to { stroke-dashoffset: -28; }
+}
+.mps-flow-march {
+    stroke-dasharray: 10 18;
+    animation: mps-flow-march 0.9s linear infinite;
+}
+
+/* The travelling head: one bright dot running the length of the route. */
+@keyframes mps-flow-pulse {
+    0%, 100% { r: 4; opacity: 1; }
+    50%      { r: 7; opacity: 0.55; }
+}
+.mps-flow-runner {
+    animation: mps-flow-pulse 0.9s ease-in-out infinite;
+}
+
+/* Respect a user who has asked the system to stop animating things. */
+@media (prefers-reduced-motion: reduce) {
+    .mps-flow-march,
+    .mps-flow-runner,
+    .mps-pending {
+        animation: none;
+    }
+}

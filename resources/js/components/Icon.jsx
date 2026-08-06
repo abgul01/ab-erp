@@ -5,6 +5,9 @@ import {
     ChevronLeft, ChevronRight, Save, ShoppingCart, ClipboardList, FileText,
     PackageCheck, Scale, Calculator, Check, Send, Ban, Lock,
     Undo2, Receipt, Warehouse, Rows3, Boxes, Calendar,
+    TrendingUp, TrendingDown, Minus, AlertTriangle, AlertOctagon, Info,
+    CheckCircle, Bell, Clock, Scissors, Play, ArrowDown, Download,
+    Eye, Upload, Truck, PackageOpen,
 } from 'lucide-react';
 
 const MAP = {
@@ -17,7 +20,12 @@ const MAP = {
     'shopping-cart': ShoppingCart, 'clipboard-list': ClipboardList,
     'file-text': FileText, 'package-check': PackageCheck, scale: Scale,
     calculator: Calculator, check: Check, send: Send, ban: Ban, lock: Lock,
-    undo: Undo2, receipt: Receipt, warehouse: Warehouse, rows: Rows3, boxes: Boxes, calendar: Calendar,
+    undo: Undo2, receipt: Receipt, warehouse: Warehouse, rows: Rows3, boxes: Boxes,
+    calendar: Calendar, 'trending-up': TrendingUp, 'trending-down': TrendingDown,
+    minus: Minus, 'alert-triangle': AlertTriangle, 'alert-octagon': AlertOctagon,
+    info: Info, 'check-circle': CheckCircle, bell: Bell, clock: Clock,
+    scissors: Scissors, play: Play, 'arrow-down': ArrowDown, download: Download,
+    eye: Eye, upload: Upload, truck: Truck, 'package-open': PackageOpen,
 };
 
 export default function Icon({ name, className = 'h-4 w-4', ...rest }) {

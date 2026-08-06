@@ -59,4 +59,23 @@ export const useAuth = create((set, get) => ({
         if (user?.is_super_admin) return true;
         return Boolean(permissions?.[menuLink]?.[action]);
     },
+
+    /** Ganti password akun sendiri (token aktif dipertahankan). */
+    async changePassword(currentPassword, nextPassword) {
+        await api.post('/auth/change-password', {
+            current_password: currentPassword,
+            password: nextPassword,
+            password_confirmation: nextPassword,
+        });
+    },
+
+    /** Muat ulang user + pohon menu + peta permission dari server. */
+    async refreshMenus() {
+        const { data } = await api.get('/auth/me');
+        set({
+            user: data.data.user,
+            menus: data.data.menus,
+            permissions: data.data.permissions,
+        });
+    },
 }));

@@ -26,15 +26,14 @@ class SubcontController extends Controller
     /** Open SUBCONT POs with per-line ordered vs already-sent qty. */
     public function pos()
     {
-        $pos = DB::table('prc_po_main as m')
+        $pos = DB::table('sub_po_main as m')
             ->leftJoin('m_contacts as v', 'v.id', '=', 'm.ven_id')
-            ->where('m.po_type', 'SUBCONT')
-            ->whereIn('m.status', ['OPEN', 'INPROGRESS'])
+            ->where('m.status', 'OPEN')
             ->orderByDesc('m.id')
             ->get(['m.id', 'm.code', 'm.ven_id', 'v.company_n as vendor']);
 
         return ApiResponse::collection($pos->map(function ($po) {
-            $lines = DB::table('prc_po_detail as d')
+            $lines = DB::table('sub_po_detail as d')
                 ->join('m_item as i', 'i.id', '=', 'd.item_id')
                 ->where('d.main_id', $po->id)
                 ->get(['d.item_id', 'i.code as item_code', 'i.part_name', 'd.qty']);
@@ -48,6 +47,54 @@ class SubcontController extends Controller
                 ])->values(),
             ];
         }));
+    }
+
+    /**
+     * Resolve a scanned WIP pallet (cutting or processing) to the WO + item it
+     * belongs to, so a subcont DN can send that exact pallet. The pallet's item
+     * must be on the PO, and the pallet must not already be on another DN.
+     */
+    public function scanPallet(Request $request)
+    {
+        $data = $request->validate([
+            'po_id' => ['required', 'integer', 'exists:sub_po_main,id'],
+            'pallet_code' => ['required', 'string'],
+        ]);
+        $code = trim($data['pallet_code']);
+
+        if (sub_dn_detail::where('pallet_code', $code)->exists()) {
+            throw BizException::make('SUB_PALLET_SENT', "Pallet {$code} sudah pernah dikirim ke subcont.");
+        }
+
+        // find the pallet among processing then cutting outputs → its WIP
+        $p = DB::table('tr_pro_pal_pr as pp')->join('tr_pro_main as m', 'm.id', '=', 'pp.pro_id')
+            ->where('pp.code', $code)->first(['pp.qty', 'm.wip_id']);
+        if (! $p) {
+            $p = DB::table('tr_cut_pal_pr as cp')->join('tr_cut_main as m', 'm.id', '=', 'cp.cut_id')
+                ->where('cp.code', $code)->first(['cp.qty', 'm.wip_id']);
+        }
+        if (! $p) {
+            throw BizException::make('SUB_PALLET', "Pallet {$code} tidak ditemukan di produksi (bukan pallet WIP).");
+        }
+
+        $wip = DB::table('prd_wip as w')->join('prd_wo_main as wm', 'wm.id', '=', 'w.wo_id')
+            ->join('m_item as i', 'i.id', '=', 'wm.fg_id')
+            ->where('w.id', $p->wip_id)
+            ->first(['w.id as wip_id', 'w.code as wip_code', 'wm.id as wo_id', 'wm.code as wo_code', 'wm.fg_id as item_id', 'i.code as item_code', 'i.part_name']);
+        if (! $wip) {
+            throw BizException::make('SUB_WIP', 'WIP/WO untuk pallet ini tidak ditemukan.');
+        }
+
+        // the pallet's item must be on the subcont PO
+        if (! DB::table('sub_po_detail')->where('main_id', $data['po_id'])->where('item_id', $wip->item_id)->exists()) {
+            throw BizException::make('SUB_ITEM', "Item pallet ({$wip->item_code}) tidak ada pada PO subcont ini.");
+        }
+
+        return ApiResponse::item([
+            'pallet_code' => $code, 'wo_id' => (int) $wip->wo_id, 'wo_code' => $wip->wo_code,
+            'wip_code' => $wip->wip_code, 'item_id' => (int) $wip->item_id,
+            'item_code' => $wip->item_code, 'part_name' => $wip->part_name, 'qty' => (int) $p->qty,
+        ]);
     }
 
     /* ---------------- Delivery Note (send to vendor) ---------------- */
@@ -70,7 +117,7 @@ class SubcontController extends Controller
     {
         $data = $request->validate([
             'date' => ['required', 'date'],
-            'po_id' => ['required', 'integer', 'exists:prc_po_main,id'],
+            'po_id' => ['required', 'integer', 'exists:sub_po_main,id'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.item_id' => ['required', 'integer', 'exists:m_item,id'],
             'lines.*.wo_id' => ['nullable', 'integer'],
@@ -78,9 +125,9 @@ class SubcontController extends Controller
             'lines.*.serial_id' => ['nullable', 'string', 'max:50'],
             'lines.*.pallet_code' => ['nullable', 'string', 'max:50'],
         ]);
-        $po = DB::table('prc_po_main')->where('id', $data['po_id'])->first();
-        if (! $po || $po->po_type !== 'SUBCONT') {
-            throw BizException::make('SUB_PO', 'PO ini bukan tipe SUBCONT.');
+        $po = DB::table('sub_po_main')->where('id', $data['po_id'])->first();
+        if (! $po || $po->status !== 'OPEN') {
+            throw BizException::make('SUB_PO', 'PO subcont tidak ditemukan / belum di-approve (OPEN).');
         }
         $this->assertSendable($data['po_id'], $data['lines']);
 
@@ -185,7 +232,7 @@ class SubcontController extends Controller
             throw BizException::make('SUB_GR_OVER', "Qty diterima melebihi sisa DN ({$outstanding}).");
         }
 
-        $gr = DB::transaction(function () use ($data, $dn, $recv, $request) {
+        $gr = DB::transaction(function () use ($data, $dn, $request) {
             $gr = sub_gr_main::create([
                 'code' => (new NumberingService)->next('SGR', 'SGR'),
                 'date' => $data['date'],
@@ -242,13 +289,13 @@ class SubcontController extends Controller
     /** Each DN line's qty must fit within the PO order less what was already sent. */
     private function assertSendable(int $poId, array $lines): void
     {
-        $ordered = DB::table('prc_po_detail')->where('main_id', $poId)
+        $ordered = DB::table('sub_po_detail')->where('main_id', $poId)
             ->groupBy('item_id')->selectRaw('item_id, SUM(qty) as q')->pluck('q', 'item_id');
 
         $byItem = [];
         foreach ($lines as $i => $l) {
             if (! isset($ordered[$l['item_id']])) {
-                throw BizException::make('SUB_ITEM', 'Baris #' . ($i + 1) . ': item tidak ada pada PO subcont ini.');
+                throw BizException::make('SUB_ITEM', 'Baris #'.($i + 1).': item tidak ada pada PO subcont ini.');
             }
             $byItem[$l['item_id']] = ($byItem[$l['item_id']] ?? 0) + (int) $l['qty'];
         }

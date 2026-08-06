@@ -4,6 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import App from './app/App';
 import ErrorBoundary from './components/ErrorBoundary';
+import { registerServiceWorker } from './pwa';
+
+// The build has no HTML entry for the plugin to inject into (Blade serves the
+// shell), so the shop-floor terminals get their service worker from here.
+registerServiceWorker();
 
 const queryClient = new QueryClient({
     defaultOptions: {

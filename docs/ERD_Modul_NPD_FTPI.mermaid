@@ -1,0 +1,533 @@
+%% ERD Modul NPD — versi 2.0, disesuaikan untuk AB-ERP
+%%
+%% Perbedaan pokok dari versi 1 (ERD_Modul_NPD_FTPI.v1-asli.mermaid):
+%%   - `customers`            -> m_contacts (category_id = 3 Customer)
+%%   - `npd_approvals`        -> DIHAPUS, memakai tabel `approvals` + ApprovalEngine
+%%   - `npd_change_requests`  -> DIHAPUS, memakai eng_ecn_main + kolom npd_project_id
+%%   - item/mesin/parameter   -> jadi FK ke m_item, m_machine, m_inspection_param
+%%   - penamaan tabel & kolom -> mengikuti konvensi AB-ERP (*_main / *_det, code,
+%%                               status, user_id, item_id, cus_id, main_id)
+%%
+%% Tabel berawalan m_/prc_/prd_/sls_/eng_ adalah tabel AB-ERP yang SUDAH ADA.
+%% Tabel berawalan npd_ adalah tabel baru modul ini.
+
+erDiagram
+    %% ---------- keterkaitan ke master yang sudah ada ----------
+    m_contacts        ||--o{ npd_project        : "pelanggan"
+    users             ||--o{ npd_project        : "project manager"
+    m_item            ||--o{ npd_project        : "part induk (modifikasi/derivatif)"
+    npd_project       ||--o{ npd_member         : "beranggotakan"
+    users             ||--o{ npd_member         : "tergabung"
+
+    %% ---------- intake ----------
+    npd_project       ||--o{ npd_rfq            : "berasal dari"
+    m_contacts        ||--o{ npd_rfq            : "diajukan oleh"
+    npd_project       ||--o| npd_feasibility    : "dievaluasi"
+
+    %% ---------- fase, task, deliverable ----------
+    npd_phase         ||--o{ npd_project_phase  : "diinstansiasi"
+    npd_project       ||--o{ npd_project_phase  : "melewati"
+    npd_project_phase ||--o{ npd_task           : "berisi"
+    npd_project       ||--o{ npd_milestone      : "punya"
+    npd_phase         ||--o{ npd_deliverable_std: "mewajibkan"
+    npd_project_phase ||--o{ npd_deliverable    : "menghasilkan"
+    npd_deliverable_std ||--o{ npd_deliverable  : "menurunkan"
+    npd_doc           ||--o{ npd_deliverable    : "dibuktikan oleh"
+
+    %% gate: dokumen yang di-approve adalah baris fase, lewat mesin approval umum
+    npd_project_phase ||--o{ approvals          : "gate (doc_type=npd_project_phase)"
+
+    %% ---------- dokumen ----------
+    npd_project       ||--o{ npd_doc            : "menyimpan"
+
+    %% ---------- BOM & costing ----------
+    npd_project       ||--o{ npd_bom_main       : "punya"
+    npd_bom_main      ||--o{ npd_bom_det        : "berisi"
+    m_item            ||--o{ npd_bom_det        : "material (bila sudah ada)"
+    m_supplier_item   ||--o{ npd_bom_det        : "sumber harga"
+    npd_project       ||--o{ npd_cost_main      : "punya"
+    npd_cost_main     ||--o{ npd_cost_det       : "rincian"
+    m_process         ||--o{ npd_cost_det       : "proses yang ditarifkan"
+    cst_rate          ||--o{ npd_cost_det       : "tarif per jam"
+    m_pricelist_det   ||--o| npd_cost_main      : "quotation disetujui"
+
+    %% ---------- trial & inspeksi ----------
+    npd_project       ||--o{ npd_trial_main     : "menjalankan"
+    npd_project_phase ||--o{ npd_trial_main     : "pada fase"
+    m_machine         ||--o{ npd_trial_main     : "di mesin"
+    prd_wo_main       ||--o| npd_trial_main     : "dieksekusi sebagai WO"
+    npd_trial_main    ||--o{ npd_trial_det      : "hasil ukur"
+    m_inspection_param ||--o{ npd_trial_det     : "parameter"
+
+    %% ---------- FMEA & control plan ----------
+    npd_project       ||--o{ npd_fmea_main      : "punya"
+    npd_fmea_main     ||--o{ npd_fmea_det       : "berisi"
+    npd_project       ||--o{ npd_cp_main        : "punya"
+    npd_cp_main       ||--o{ npd_cp_det         : "berisi"
+    m_process         ||--o{ npd_cp_det         : "proses"
+    m_inspection_param ||--o{ npd_cp_det        : "karakteristik"
+
+    %% ---------- PPAP ----------
+    npd_project       ||--o{ npd_ppap_main      : "mengajukan"
+    npd_ppap_main     ||--o{ npd_ppap_det       : "terdiri dari"
+    npd_ppap_std      ||--o{ npd_ppap_det       : "18 elemen standar"
+    npd_doc           ||--o{ npd_ppap_det       : "bukti"
+
+    %% ---------- perubahan teknik: memakai modul ECN yang sudah ada ----------
+    npd_project       ||--o{ eng_ecn_main       : "perubahan selama proyek"
+
+    %% ---------- handover: keluaran proyek jadi master produksi ----------
+    npd_project       ||--o| m_item             : "handover: part baru"
+    npd_project       ||--o| m_bom              : "handover: BOM produksi"
+    npd_project       ||--o| m_process_main     : "handover: routing (WOS)"
+    npd_project       ||--o{ m_item_inspection  : "handover: parameter QC"
+
+    %% =========================================================
+    %%  TABEL BARU (npd_)
+    %% =========================================================
+
+    npd_project {
+        bigint id PK
+        string code UK "NPD/2026/08/00001 dari NumberingService"
+        string name
+        bigint cus_id FK "m_contacts, kategori Customer"
+        bigint parent_item_id FK "m_item, untuk modifikasi/derivatif"
+        string part_name "nama part yang dikembangkan"
+        string drawing_no
+        string project_type "NEW|MODIFICATION|DERIVATIVE"
+        tinyint current_phase_no "1-5"
+        string status "DRAFT|RUNNING|ON_HOLD|HANDOVER|CLOSED|CANCELLED"
+        date target_sop
+        bigint pm_user_id FK "users"
+        string priority "LOW|NORMAL|HIGH"
+        bigint item_id FK "m_item hasil handover, null sebelum itu"
+        bigint bom_id FK "m_bom hasil handover"
+        bigint process_main_id FK "m_process_main hasil handover"
+        date handover_date
+        bigint user_id FK
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    npd_rfq {
+        bigint id PK
+        bigint main_id FK "npd_project, null bila RFQ belum jadi proyek"
+        bigint cus_id FK "m_contacts"
+        string code "nomor RFQ pelanggan"
+        date date
+        int qty
+        decimal target_price
+        date due_date
+        string drawing_ref
+        string status "OPEN|QUOTED|WON|LOST"
+        bigint user_id FK
+    }
+
+    npd_feasibility {
+        bigint id PK
+        bigint main_id FK "npd_project"
+        boolean tech_ok "mampu secara teknis"
+        boolean capacity_ok "kapasitas mesin tersedia"
+        boolean cost_ok "biaya masuk target harga"
+        string material_avail "ketersediaan material"
+        string conclusion "GO|NO_GO|CONDITIONAL"
+        string note
+        bigint user_id FK "yang mengevaluasi"
+        timestamp evaluated_at
+    }
+
+    npd_phase {
+        bigint id PK
+        tinyint phase_no "1-5"
+        string name "Plan & Define, Product Design, ..."
+        string descrip
+        tinyint gate_levels "jumlah level approval gate"
+    }
+
+    npd_project_phase {
+        bigint id PK
+        bigint main_id FK "npd_project"
+        bigint phase_id FK "npd_phase"
+        date planned_start
+        date planned_end
+        date actual_start
+        date actual_end
+        string status "PLANNED|RUNNING|SUBMITTED|APPROVED|REJECTED"
+        bigint pic_user_id FK "users"
+    }
+
+    npd_task {
+        bigint id PK
+        bigint main_id FK "npd_project_phase"
+        string name
+        string descrip
+        bigint assigned_to FK "users"
+        date planned_start
+        date planned_end
+        date actual_start
+        date actual_end
+        tinyint progress_pct
+        bigint predecessor_id FK "npd_task"
+        string status "OPEN|RUNNING|DONE|CANCELLED"
+    }
+
+    npd_milestone {
+        bigint id PK
+        bigint main_id FK "npd_project"
+        string name
+        date planned_date
+        date actual_date
+        string status "PLANNED|DONE|LATE"
+    }
+
+    npd_deliverable_std {
+        bigint id PK
+        bigint phase_id FK "npd_phase"
+        string code "DFMEA, PFMEA, CP, MSA, PSW, ..."
+        string name
+        boolean mandatory "gate ditolak bila ini belum selesai"
+        smallint sort
+    }
+
+    npd_deliverable {
+        bigint id PK
+        bigint main_id FK "npd_project_phase"
+        bigint std_id FK "npd_deliverable_std"
+        string title
+        string status "OPEN|IN_PROGRESS|DONE|WAIVED"
+        bigint resp_user_id FK "users"
+        date due_date
+        date submitted_date
+        bigint doc_id FK "npd_doc"
+        string note
+    }
+
+    npd_doc {
+        bigint id PK
+        bigint main_id FK "npd_project"
+        string ref_type "polimorfik: TRIAL|FMEA|CP|PPAP|DELIVERABLE|..."
+        bigint ref_id
+        string doc_type "DRAWING|SPEC|REPORT|CERT|..."
+        string file_name
+        string file_path "storage/app/npd/kode-proyek/nama-berkas"
+        string mime
+        int size_kb
+        string version "rev A, rev B, ..."
+        boolean is_current "revisi lama tetap tersimpan"
+        bigint user_id FK
+        timestamp created_at
+    }
+
+    npd_bom_main {
+        bigint id PK
+        bigint main_id FK "npd_project"
+        string version
+        string status "DRAFT|APPROVED|SUPERSEDED"
+        date effective_date
+        bigint approved_by FK "users"
+    }
+
+    npd_bom_det {
+        bigint id PK
+        bigint main_id FK "npd_bom_main"
+        bigint item_id FK "m_item, null bila part belum ada"
+        string new_item_code "diisi bila part baru"
+        string new_item_name
+        string role "RM|PM"
+        decimal qty
+        decimal length_use "mm, untuk RM pipa"
+        bigint uom_id FK "m_uom"
+        bigint ven_id FK "m_contacts, supplier acuan"
+        decimal unit_cost "diambil dari m_supplier_item bila ada"
+        string note
+    }
+
+    npd_cost_main {
+        bigint id PK
+        bigint main_id FK "npd_project"
+        string version
+        string period "YYYYMM, penentu tarif cst_rate yang dipakai"
+        decimal material_cost
+        decimal process_cost
+        decimal tooling_cost
+        decimal overhead
+        decimal margin_pct
+        decimal total_cost
+        decimal quoted_price
+        string status "DRAFT|SUBMITTED|APPROVED|REJECTED"
+        bigint approved_by FK "users"
+        bigint pricelist_det_id FK "m_pricelist_det, bila quotation dipakai"
+    }
+
+    npd_cost_det {
+        bigint id PK
+        bigint main_id FK "npd_cost_main"
+        string cost_type "MATERIAL|LABOR|FOH|TOOLING|OTHER"
+        bigint proc_id FK "m_process, untuk LABOR/FOH"
+        bigint item_id FK "m_item, untuk MATERIAL"
+        decimal qty
+        decimal cycle_sec "dasar perhitungan jam mesin"
+        decimal rate "dari cst_rate atau m_supplier_item"
+        decimal amount
+        string note
+    }
+
+    npd_trial_main {
+        bigint id PK
+        bigint main_id FK "npd_project"
+        bigint phase_id FK "npd_project_phase"
+        bigint wo_id FK "prd_wo_main, untuk pilot/mass_trial"
+        string code
+        string trial_type "PROTOTYPE|PILOT|MASS_TRIAL"
+        date date
+        bigint machine_id FK "m_machine"
+        int planned_qty
+        int produced_qty
+        int ok_qty
+        int ng_qty
+        string conclusion
+        string status "DRAFT|DONE"
+        bigint user_id FK "operator/penanggung jawab"
+    }
+
+    npd_trial_det {
+        bigint id PK
+        bigint main_id FK "npd_trial_main"
+        bigint param_id FK "m_inspection_param"
+        decimal nominal "dari m_item_inspection bila part terdaftar"
+        decimal min_value
+        decimal max_value
+        decimal measured
+        string judgement "OK|NG — dihitung sistem, bukan diketik"
+        string instrument
+        bigint inspector_id FK "users"
+    }
+
+    npd_fmea_main {
+        bigint id PK
+        bigint main_id FK "npd_project"
+        string fmea_type "DESIGN|PROCESS"
+        string code
+        string revision
+        string team
+        bigint user_id FK "penyusun"
+        date date
+        smallint rpn_threshold "ambang wajib tindakan, default 100"
+    }
+
+    npd_fmea_det {
+        bigint id PK
+        bigint main_id FK "npd_fmea_main"
+        bigint proc_id FK "m_process, untuk PFMEA"
+        string item_function
+        string failure_mode
+        string effect
+        tinyint severity "1-10"
+        string cause
+        tinyint occurrence "1-10"
+        string current_control
+        tinyint detection "1-10"
+        smallint rpn "S x O x D, dihitung sistem"
+        string recommended_action
+        string action_taken
+        bigint resp_user_id FK "users"
+        date due_date
+        string status "OPEN|DONE"
+    }
+
+    npd_cp_main {
+        bigint id PK
+        bigint main_id FK "npd_project"
+        string code
+        string revision
+        string cp_type "PROTOTYPE|PRE_LAUNCH|PRODUCTION"
+        bigint user_id FK "penyusun"
+        date date
+    }
+
+    npd_cp_det {
+        bigint id PK
+        bigint main_id FK "npd_cp_main"
+        smallint seq "urutan proses"
+        bigint proc_id FK "m_process"
+        bigint param_id FK "m_inspection_param"
+        decimal nominal
+        decimal min_value
+        decimal max_value
+        string method "metode ukur"
+        int sample_size
+        string frequency
+        string control_method
+        string reaction_plan
+        boolean to_item_inspection "ikut dibuat jadi m_item_inspection saat handover"
+    }
+
+    npd_ppap_std {
+        bigint id PK
+        tinyint element_no "1-18"
+        string name
+        string level_required "level PPAP yang mewajibkan, mis. 3,4,5"
+    }
+
+    npd_ppap_main {
+        bigint id PK
+        bigint main_id FK "npd_project"
+        tinyint ppap_level "1-5"
+        string psw_no
+        date submission_date
+        string status "DRAFT|SUBMITTED|INTERIM|APPROVED|REJECTED"
+        date approval_date
+        string customer_pic
+        string note
+        bigint user_id FK
+    }
+
+    npd_ppap_det {
+        bigint id PK
+        bigint main_id FK "npd_ppap_main"
+        bigint std_id FK "npd_ppap_std"
+        string status "NA|OPEN|DONE"
+        bigint doc_id FK "npd_doc"
+        string note
+    }
+
+    npd_member {
+        bigint id PK
+        bigint main_id FK "npd_project"
+        bigint user_id FK "users"
+        string role "PM|DESIGN|PROCESS|QUALITY|PROCUREMENT|COSTING|VIEWER"
+        timestamp created_at
+    }
+
+    %% =========================================================
+    %%  TABEL AB-ERP YANG DIPAKAI (sudah ada, tidak dibuat ulang)
+    %% =========================================================
+
+    m_contacts {
+        bigint id PK
+        string company_n
+        bigint category_id FK "3 = Customer"
+        string email
+        string phone
+    }
+
+    users {
+        bigint id PK
+        string username
+        string name
+        bigint ven_id FK "hanya untuk akun portal vendor"
+    }
+
+    approvals {
+        bigint id PK
+        string doc_type "npd_project_phase untuk gate NPD"
+        bigint doc_id
+        tinyint level
+        string required_role "link menu, mis. npd-projects"
+        string status "PENDING|APPROVED|REJECTED|SKIPPED"
+        bigint acted_by FK
+        timestamp acted_at
+        string note
+    }
+
+    eng_ecn_main {
+        bigint id PK
+        string code
+        string change_type "ITEM|BOM|ROUTING"
+        bigint item_id FK "m_item"
+        bigint npd_project_id FK "KOLOM BARU: ECN yang lahir dari proyek NPD"
+        date effective_date
+        string status "DRAFT|SUBMITTED|APPROVED|APPLIED|REJECTED"
+    }
+
+    m_item {
+        bigint id PK
+        string code
+        string part_name
+        string type "RM|PM|FG"
+        smallint rev "dinaikkan ECN"
+        string status "approval master"
+    }
+
+    m_bom {
+        bigint id PK
+        bigint item_id FK "m_item"
+        smallint rev
+        string status
+    }
+
+    m_process_main {
+        bigint id PK
+        string code
+        string name
+        smallint rev
+        string status
+    }
+
+    m_item_inspection {
+        bigint id PK
+        bigint item_id FK "m_item"
+        bigint param_id FK "m_inspection_param"
+        decimal nominal
+        decimal min_value
+        decimal max_value
+        boolean mandatory
+    }
+
+    m_inspection_param {
+        bigint id PK
+        string code
+        string name
+        string uom
+        string method
+    }
+
+    m_machine {
+        bigint id PK
+        string code
+        string name
+        bigint asset_id FK
+    }
+
+    m_process {
+        bigint id PK
+        string code
+        string name_p
+    }
+
+    cst_rate {
+        bigint id PK
+        string period "YYYYMM"
+        string rate_type "LABOR|FOH"
+        bigint process_id FK "m_process"
+        decimal rate_per_hour
+    }
+
+    m_supplier_item {
+        bigint id PK
+        bigint ven_id FK "m_contacts"
+        bigint item_id FK "m_item"
+        smallint priority
+        decimal price
+        int moq
+        smallint lead_time_days
+    }
+
+    m_pricelist_det {
+        bigint id PK
+        bigint main_id FK "m_pricelist_main"
+        bigint item_id FK "m_item"
+        decimal price
+        date valid_from
+        date valid_to
+        int min_qty
+    }
+
+    prd_wo_main {
+        bigint id PK
+        string code
+        bigint fg_id FK "m_item"
+        bigint process_main_id FK "m_process_main"
+        int qty
+        int status
+    }

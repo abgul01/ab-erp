@@ -10,8 +10,11 @@ class tr_inc_fg_det extends Model
     use HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'tr_inc_fg_det';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [
@@ -21,7 +24,11 @@ class tr_inc_fg_det extends Model
         'item_id',
         'cut_id',
         'qty',
-        'wip_id'
+        'wip_id',
+        'unit_cost',
+        'source',
+        'parent_lot_id',
+        'status',
     ];
 
     public function main()

@@ -6,6 +6,7 @@ import Icon from '../../components/Icon';
 import Modal from '../../components/Modal';
 import { Select, useOptions, money } from '../procurement/common';
 import { Timer, KplModal, ViewCuttingModal, ViewPalletModal } from './mesShared';
+import OfflineBar from './OfflineBar';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const MAX_MACHINE = 4;   // cutting: 4 machines per transaction
@@ -90,6 +91,8 @@ export default function CuttingPage() {
         enabled: showSerials && !!head.no_dp,
     });
     const dtCats = useQuery({ queryKey: ['dt-cats'], queryFn: async () => (await api.get('/mes/dt-categories')).data.data });
+    // Serial batch sparepart + nomor unit alat yang dikenal gudang WHS.
+    const whsCodes = useQuery({ queryKey: ['whs-codes', 'cut'], queryFn: async () => (await api.get('/mes/cutting/whs-codes')).data.data, staleTime: 60_000 });
 
     const trx = useQuery({
         queryKey: ['cut', 'trx', trxId],
@@ -143,6 +146,7 @@ export default function CuttingPage() {
 
     return (
         <div className="space-y-4 p-6">
+            <OfflineBar />
             {mode === 'list' && (
                 <div className="rounded-md border border-slate-300 bg-white">
                     <div className="flex items-center justify-between border-b border-slate-300 bg-slate-50 px-4 py-2">
@@ -521,18 +525,34 @@ export default function CuttingPage() {
                                     } catch (e) { alert(apiError(e)); }
                                 }}>Start</button>
                         </div>
+                        {/*
+                          * Serial dicocokkan ke gudang WHS saat dipindai — batch
+                          * sparepart dari penerimaan atau nomor unit alat. Kode
+                          * yang tidak dikenal ditolak di sini, bukan nanti saat
+                          * disimpan, supaya operator tahu selagi barangnya masih
+                          * di tangan.
+                          */}
                         <div>
-                            <input className="field-input w-64" placeholder="Scan Tools" disabled={!dt.dtId}
+                            <input className="field-input w-72" placeholder="Scan serial sparepart / nomor unit alat" disabled={!dt.dtId}
+                                list="whs-codes"
                                 value={dt.toolInput} onChange={(e) => setDt({ ...dt, toolInput: e.target.value })}
-                                onKeyDown={(e) => { if (e.key === 'Enter' && dt.toolInput) setDt({ ...dt, tools: [...dt.tools, { serial_item: dt.toolInput, tools_id: 0 }], toolInput: '' }); }} />
+                                onKeyDown={(e) => {
+                                    if (e.key !== 'Enter' || !dt.toolInput) return;
+                                    const found = (whsCodes.data || []).find((c) => c.serial_code === dt.toolInput.trim());
+                                    if (!found) { alert(`Serial "${dt.toolInput}" tidak dikenal gudang WHS.`); return; }
+                                    setDt({ ...dt, tools: [...dt.tools, { serial_item: found.serial_code, tools_id: found.item_id, name: found.item_name }], toolInput: '' });
+                                }} />
+                            <datalist id="whs-codes">
+                                {(whsCodes.data || []).map((c) => <option key={c.serial_code} value={c.serial_code}>{c.label}</option>)}
+                            </datalist>
                         </div>
                         <div>
-                            <div className="mb-1 text-sm font-semibold text-slate-700">Flow Process</div>
+                            <div className="mb-1 text-sm font-semibold text-slate-700">Sparepart / alat yang dipakai</div>
                             <table className="w-full text-sm">
-                                <thead><tr className="bg-slate-50 text-left text-xs font-semibold text-slate-600"><th className={rowStyle}>Serial Part</th><th className={rowStyle}>Tools</th></tr></thead>
+                                <thead><tr className="bg-slate-50 text-left text-xs font-semibold text-slate-600"><th className={rowStyle}>Serial</th><th className={rowStyle}>Barang WHS</th></tr></thead>
                                 <tbody>
-                                    {dt.tools.length === 0 && <tr><td className={rowStyle} colSpan={2}>Belum ada tools discan.</td></tr>}
-                                    {dt.tools.map((x, i) => <tr key={i}><td className={rowStyle}>{x.serial_item}</td><td className={rowStyle}>{x.tools_id || '-'}</td></tr>)}
+                                    {dt.tools.length === 0 && <tr><td className={rowStyle} colSpan={2}>Belum ada yang discan.</td></tr>}
+                                    {dt.tools.map((x, i) => <tr key={i}><td className={rowStyle}>{x.serial_item}</td><td className={rowStyle}>{x.name || x.tools_id || '-'}</td></tr>)}
                                 </tbody>
                             </table>
                         </div>

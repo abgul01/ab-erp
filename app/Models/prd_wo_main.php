@@ -2,20 +2,53 @@
 
 namespace App\Models;
 
+use App\Support\HasApproval;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class prd_wo_main extends Model
 {
+    use HasApproval;
     use HasFactory;
 
+    /** Work Order status is numeric here: 1 Draft, 2 Released, 3 Closed, 9 Cancelled. */
+    public const DRAFT = 1;
+
+    public const RELEASED = 2;
+
+    public const CLOSED = 3;
+
+    public const CANCELLED = 9;
+
+    // Approval moves a WO from draft to released; a rejected one is cancelled.
+    public function submittedStatus(): mixed
+    {
+        return self::DRAFT;
+    }
+
+    public function approvedStatus(): mixed
+    {
+        return self::RELEASED;
+    }
+
+    public function rejectedStatus(): mixed
+    {
+        return self::CANCELLED;
+    }
+
     protected $connection = 'mysql';
+
     protected $table = 'prd_wo_main';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [
         'code',
+        // PROD | NPD_TRIAL — keluaran WO trial tidak dihitung MRP sebagai pasokan.
+        'wo_kind',
+        'npd_project_id',
         'date',
         'customer_id',
         'so_id',
@@ -26,7 +59,7 @@ class prd_wo_main extends Model
         'qty',
         'status',
         'no_cut',
-        'for_pm'
+        'for_pm',
     ];
 
     public function customer()

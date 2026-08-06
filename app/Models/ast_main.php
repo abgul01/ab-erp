@@ -2,16 +2,21 @@
 
 namespace App\Models;
 
+use App\Support\HasApproval;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class ast_main extends Model
 {
+    use HasApproval;
     use HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'ast_main';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [
@@ -42,8 +47,9 @@ class ast_main extends Model
         return $this->belongsTo(prc_gr_detail::class, 'gr_detail_id', 'id');
     }
 
-    public function wh_gen_req_det()
+    /** Sparepart & alat yang dikeluarkan gudang WHS untuk aset ini. */
+    public function whs_out_det()
     {
-        return $this->hasMany(wh_gen_req_det::class, 'asset_id', 'id');
+        return $this->hasMany(whs_out_det::class, 'asset_id', 'id');
     }
 }

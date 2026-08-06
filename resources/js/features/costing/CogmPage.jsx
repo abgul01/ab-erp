@@ -5,7 +5,7 @@ import { useAuth } from '../../stores/auth';
 import Icon from '../../components/Icon';
 import { money } from '../procurement/common';
 
-const ym = () => new Date().toISOString().slice(0, 7).replace('-', '');
+import MonthPicker, { MonthRangePicker, currentPeriod, formatPeriod, periodRange } from '../../components/MonthPicker';
 
 /**
  * COGM — standard cost of goods manufactured per Work Order for a period:
@@ -14,13 +14,18 @@ const ym = () => new Date().toISOString().slice(0, 7).replace('-', '');
 export default function CogmPage() {
     const qc = useQueryClient();
     const can = useAuth((s) => s.can);
-    const [period, setPeriod] = useState(ym());
+    // The table always shows one month; the recalculation may span several,
+    // which is what you want after correcting a rate that affected a quarter.
+    const [period, setPeriod] = useState(currentPeriod());
+    const [range, setRange] = useState({ from: currentPeriod(), to: currentPeriod() });
     const [error, setError] = useState('');
+    const runPeriods = periodRange(range.from, range.to);
 
     const data = useQuery({ queryKey: ['cogm', period], queryFn: async () => (await api.get('/cogm', { params: { period } })).data.data });
     const run = useMutation({
-        mutationFn: async () => api.post('/cogm/run', { period }),
-        onSuccess: () => { qc.invalidateQueries({ queryKey: ['cogm'] }); setError(''); }, onError: (e) => setError(apiError(e)),
+        mutationFn: async () => (await api.post('/cogm/run', { periods: runPeriods })).data.data,
+        onSuccess: (d) => { qc.invalidateQueries({ queryKey: ['cogm'] }); setError(''); alert(d.message); },
+        onError: (e) => setError(apiError(e)),
     });
 
     const rows = data.data?.rows || [];
@@ -36,9 +41,23 @@ export default function CogmPage() {
                     <h1 className="text-xl font-semibold text-slate-800">COGM — Biaya Produksi per Work Order</h1>
                     <p className="text-xs text-slate-400">Biaya standar: material (BOM) + tenaga kerja + overhead + subcont − nilai scrap. Unit cost = total ÷ qty WO.</p>
                 </div>
-                <div className="flex items-end gap-2">
-                    <div><label className="field-label">Periode</label><input className="field-input w-32" maxLength={6} value={period} onChange={(e) => setPeriod(e.target.value)} placeholder="202607" /></div>
-                    {can('cogm', 'create') && <button className="btn btn-primary" onClick={() => { setError(''); run.mutate(); }} disabled={run.isPending}>{run.isPending ? <Icon name="spinner" className="h-4 w-4 animate-spin" /> : <Icon name="calculator" />} Hitung COGM</button>}
+                <div className="flex flex-wrap items-end gap-3">
+                    <div>
+                        <label className="field-label">Tampilkan bulan</label>
+                        <MonthPicker value={period} onChange={setPeriod} className="w-40" />
+                    </div>
+                    {can('cogm', 'create') && (
+                        <>
+                            <div className="border-l border-slate-200 pl-3">
+                                <MonthRangePicker from={range.from} to={range.to} onChange={setRange} disabled={run.isPending} />
+                            </div>
+                            <button className="btn btn-primary" disabled={run.isPending || runPeriods.length === 0}
+                                onClick={() => { setError(''); run.mutate(); }}>
+                                {run.isPending ? <Icon name="spinner" className="h-4 w-4 animate-spin" /> : <Icon name="calculator" />}
+                                {runPeriods.length > 1 ? `Hitung ${runPeriods.length} Bulan` : 'Hitung COGM'}
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
             {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}

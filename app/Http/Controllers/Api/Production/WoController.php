@@ -11,6 +11,7 @@ use App\Models\prd_wo_main;
 use App\Models\prd_wo_serial_rm;
 use App\Support\ApiResponse;
 use App\Support\AuditLogger;
+use App\Support\ItemLifecycle;
 use App\Support\NumberingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,8 +27,11 @@ use Illuminate\Support\Facades\DB;
 class WoController extends Controller
 {
     public const DRAFT = 1;
+
     public const RELEASED = 2;
+
     public const CLOSED = 3;
+
     public const CANCELLED = 9;
 
     public function index(Request $request)
@@ -149,6 +153,14 @@ class WoController extends Controller
     public function store(Request $request)
     {
         $data = $this->validateWo($request);
+
+        /*
+         * Layar ini hanya membuat Work Order produksi. Work Order uji coba
+         * dibuat dari modul NPD dan ditandai `wo_kind = NPD_TRIAL`, karena
+         * keluarannya tidak boleh dihitung MRP sebagai pasokan siap jual.
+         */
+        ItemLifecycle::assertMassPro($data['fg_id'], 'work order produksi');
+
         $this->assertMps($data, null);
         [$rmIds, $pmIds] = $this->bomIds($data['fg_id']);
         $this->assertLines($data, $rmIds, $pmIds, 0);
@@ -158,6 +170,7 @@ class WoController extends Controller
         $wo = DB::transaction(function () use ($data, $request, $routingId) {
             $wo = prd_wo_main::create([
                 'code' => (new NumberingService)->next('WO', 'WO'),
+                'wo_kind' => 'PROD',
                 'date' => $data['date'],
                 'customer_id' => $data['customer_id'],
                 'so_id' => ($data['so_id'] ?? '') ?: '-',
@@ -273,10 +286,18 @@ class WoController extends Controller
         }
         $fmt = fn ($v) => rtrim(rtrim(number_format((float) $v, 2, '.', ''), '0'), '.');
         $p = [];
-        if ((float) $it->o_d) $p[] = 'OD:' . $fmt($it->o_d);
-        if ((float) $it->i_d) $p[] = 'ID:' . $fmt($it->i_d);
-        if ((float) $it->thick) $p[] = 'T:' . $fmt($it->thick);
-        if ((float) $it->length) $p[] = 'L:' . $fmt($it->length);
+        if ((float) $it->o_d) {
+            $p[] = 'OD:'.$fmt($it->o_d);
+        }
+        if ((float) $it->i_d) {
+            $p[] = 'ID:'.$fmt($it->i_d);
+        }
+        if ((float) $it->thick) {
+            $p[] = 'T:'.$fmt($it->thick);
+        }
+        if ((float) $it->length) {
+            $p[] = 'L:'.$fmt($it->length);
+        }
 
         return implode(' / ', $p);
     }
@@ -322,7 +343,7 @@ class WoController extends Controller
 
         foreach ($data['rm_lines'] ?? [] as $i => $l) {
             if (! in_array((int) $l['rm_id'], $rmIds, true)) {
-                throw BizException::make('WO_RM', 'Material RM baris #' . ($i + 1) . ' tidak ada di BOM FG.');
+                throw BizException::make('WO_RM', 'Material RM baris #'.($i + 1).' tidak ada di BOM FG.');
             }
             foreach ($l['serials'] ?? [] as $s) {
                 if (in_array((string) $s['serial_id'], $bookedElsewhere, true)) {
@@ -332,7 +353,7 @@ class WoController extends Controller
         }
         foreach ($data['pm_lines'] ?? [] as $i => $l) {
             if (! in_array((int) $l['pm_id'], $pmIds, true)) {
-                throw BizException::make('WO_PM', 'Material PM baris #' . ($i + 1) . ' tidak ada di BOM FG.');
+                throw BizException::make('WO_PM', 'Material PM baris #'.($i + 1).' tidak ada di BOM FG.');
             }
         }
     }
@@ -382,6 +403,7 @@ class WoController extends Controller
             $lengthUse = $line ? (float) $line->length_use : 0;
             $reqLen = round($qty * $lengthUse, 2);
             $bookedPcs = (int) $d->serials->sum('qty_per_serial');
+
             return [
                 'id' => $d->id, 'rm_id' => $d->rm_id, 'note' => $d->note,
                 'rm' => $d->rm?->only(['id', 'code', 'part_name', 'o_d', 'i_d', 'thick']),
@@ -399,6 +421,7 @@ class WoController extends Controller
         $data['detail_pm'] = $wo->detailPm->map(function ($d) use ($qty, $pmByItem) {
             $line = $pmByItem->get($d->pm_id);
             $per = $line ? (int) $line->qty : 0;
+
             return [
                 'id' => $d->id, 'pm_id' => $d->pm_id, 'note' => $d->note,
                 'pm' => $d->pm?->only(['id', 'code', 'part_name']),

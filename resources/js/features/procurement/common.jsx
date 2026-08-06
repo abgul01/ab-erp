@@ -28,8 +28,17 @@ export function Select({ value, onChange, options, getValue, getLabel, placehold
     );
 }
 
-export function ItemSelect({ value, onChange, filter, placeholder }) {
-    const { data } = useOptions('items');
+/**
+ * Pemilih item untuk layar operasional.
+ *
+ * Bawaannya hanya menampilkan part yang sudah boleh diproduksi massal. Part yang
+ * masih uji coba memang ada di master, tetapi menawarkannya di sini hanya akan
+ * membuat orang memesan, menjadwalkan, atau menjual sesuatu yang akan ditolak
+ * server beberapa langkah kemudian. Layar yang memang perlu melihat semuanya
+ * mengirim `lifecycle={null}`.
+ */
+export function ItemSelect({ value, onChange, filter, placeholder, lifecycle = 'MASSPRO' }) {
+    const { data } = useOptions('items', lifecycle ? { lifecycle } : {});
     const opts = filter ? (data || []).filter(filter) : data;
     return <Select value={value} onChange={onChange} options={opts}
         getValue={(o) => o.id} getLabel={(o) => `${o.code} — ${o.part_name}`} placeholder={placeholder || '— pilih item —'} />;

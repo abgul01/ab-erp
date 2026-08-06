@@ -7,6 +7,7 @@ import Icon from '../../components/Icon';
 import PickerModal from '../../components/PickerModal';
 import { ITEM_COLUMNS } from '../procurement/PoPage';
 import { useOptions, CellInput, money } from '../procurement/common';
+import MonthPicker from '../../components/MonthPicker';
 
 const now = new Date();
 const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -132,7 +133,7 @@ export default function MppPage() {
                 {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
                 {modal && form && (
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                        <div><label className="field-label">Periode (YYYYMM) <span className="text-red-500">*</span></label><input className="field-input" value={form.period} disabled={modal.mode === 'edit'} onChange={(e) => set('period', e.target.value.replace(/\D/g, '').slice(0, 6))} /></div>
+                        <div><label className="field-label">Periode <span className="text-red-500">*</span></label><MonthPicker value={form.period} onChange={(v) => set('period', v)} disabled={modal.mode === 'edit'} className="w-full" /></div>
                         <div className="sm:col-span-2"><label className="field-label">Item FG <span className="text-red-500">*</span></label>
                             <button type="button" className="field-input flex w-full items-center justify-between gap-2 text-left disabled:bg-slate-50" disabled={modal.mode === 'edit'} onClick={() => setItemPicker(true)}>
                                 <span className="truncate">{form.item_id ? (itemById[form.item_id] ? `${itemById[form.item_id].code} — ${itemById[form.item_id].part_name}` : `#${form.item_id}`) : <span className="text-slate-400">— pilih FG —</span>}</span>

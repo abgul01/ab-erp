@@ -5,8 +5,7 @@ import { useAuth } from '../../stores/auth';
 import Modal from '../../components/Modal';
 import Icon from '../../components/Icon';
 import { Select, useOptions, money } from '../procurement/common';
-
-const ym = () => new Date().toISOString().slice(0, 7).replace('-', '');
+import MonthPicker, { currentPeriod } from '../../components/MonthPicker';
 const today = () => new Date().toISOString().slice(0, 10);
 const emptyLine = () => ({ coa_id: '', debit: '', credit: '', memo: '' });
 
@@ -15,7 +14,7 @@ export default function JournalPage() {
     const qc = useQueryClient();
     const can = useAuth((s) => s.can);
     const [tab, setTab] = useState('journals');   // 'journals' | 'trial'
-    const [period, setPeriod] = useState(ym());
+    const [period, setPeriod] = useState(currentPeriod());
     const [view, setView] = useState(null);
     const [manual, setManual] = useState(null);   // { date, descrip, lines }
     const [error, setError] = useState('');
@@ -50,7 +49,7 @@ export default function JournalPage() {
                     <p className="text-xs text-slate-400">Jurnal double-entry, buku besar, dan neraca saldo. Generate GL memposting jurnal dari dokumen (invoice, depresiasi).</p>
                 </div>
                 <div className="flex items-end gap-2">
-                    <div><label className="field-label">Periode</label><input className="field-input w-28" maxLength={6} value={period} onChange={(e) => setPeriod(e.target.value)} /></div>
+                    <div><label className="field-label">Periode</label><MonthPicker value={period} onChange={setPeriod} className="w-40" /></div>
                     {can('journals', 'create') && <button className="btn btn-ghost" onClick={() => generate.mutate()} disabled={generate.isPending}>{generate.isPending ? <Icon name="spinner" className="h-4 w-4 animate-spin" /> : <Icon name="database" />} Generate GL</button>}
                     {can('journals', 'create') && <button className="btn btn-primary" onClick={openManual}><Icon name="plus" /> Jurnal Manual</button>}
                 </div>

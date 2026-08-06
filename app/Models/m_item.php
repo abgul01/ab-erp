@@ -2,21 +2,34 @@
 
 namespace App\Models;
 
+use App\Support\HasApproval;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class m_item extends Model
 {
+    use HasApproval;
     use HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'm_item';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [
+        'status',
+        // TRIAL | MASSPRO | OBSOLETE — penentu apakah part boleh direncanakan,
+        // dijual, dan dibuatkan Work Order produksi.
+        'lifecycle',
         'code',
         'part_name',
+        // Bentuk material (Pipe/Roundbar/...), bukan golongan.
+        'shape',
+        // Keluarga produk untuk pengelompokan laporan.
+        'family_id',
         'type',
         'descrip',
         'category_id',
@@ -34,10 +47,7 @@ class m_item extends Model
         'pm',
         'active',
 
-
     ];
-
-
 
     public function m_bom()
     {
@@ -152,11 +162,6 @@ class m_item extends Model
     public function tr_pro_main()
     {
         return $this->hasMany(tr_pro_main::class, 'item_id', 'id');
-    }
-
-    public function wh_gen_out_det()
-    {
-        return $this->hasMany(wh_gen_out_det::class, 'item_id', 'id');
     }
 
     public function wh_inc_detail()

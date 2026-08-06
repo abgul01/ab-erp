@@ -6,10 +6,23 @@ import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import Icon from '../../components/Icon';
 
-const TYPES = ['Pipe', 'Roundbar', 'Square Pipe', 'Square Bar', 'Plat Bar', 'Other'];
+/**
+ * Golongan barang: Material atau FG — itulah yang dipilih.
+ *
+ * RM dan PM tidak jadi pilihan ketiga; keduanya sama-sama Material, dan yang
+ * membedakan hanyalah centang PM. Sistem yang menyimpulkan RM/PM/FG dari
+ * keduanya, sehingga tidak mungkin ada "FG yang dicentang PM".
+ */
+const GROUPS = [
+    ['MATERIAL', 'Material — bahan baku atau komponen'],
+    ['FG', 'FG — barang jadi'],
+];
+
+/** Bentuk material; atribut fisik, tidak menggolongkan apa pun. */
+const SHAPES = ['Pipe', 'Roundbar', 'Square Pipe', 'Square Bar', 'Plat Bar', 'Other'];
 
 const EMPTY = {
-    code: '', part_name: '', type: '', descrip: '', category_id: '', pm: false, active: true,
+    code: '', part_name: '', group: '', shape: '', family_id: '', descrip: '', pm: false, active: true,
     o_d: '', i_d: '', thick: '', width: '', height: '', length: '', length_cut: '',
     weight: '', tolerance: '', min_stock: '', max_stock: '',
     rm_lines: [], pm_lines: [], routings: [], customers: [],
@@ -112,7 +125,8 @@ function LineTable({ title, subtitle, onAdd, lines, head, row, empty }) {
 const COLUMNS = [
     { key: 'code', label: 'Kode' },
     { key: 'part_name', label: 'Nama Part' },
-    { key: 'type', label: 'Tipe' },
+    { key: 'type', label: 'Golongan' },
+    { key: 'shape', label: 'Bentuk', render: (v) => v || '—' },
     { key: 'pm', label: 'PM', render: (v) => (v ? 'Ya' : '') },
     { key: 'active', label: 'Aktif', render: (v) => (v ? 'Ya' : 'Tidak') },
 ];
@@ -129,20 +143,18 @@ export default function ItemPage() {
     const [form, setForm] = useState(EMPTY);
     const [error, setError] = useState('');
 
-    const categories = useOptions('categories');
     const processMains = useOptions('process-mains');
     const contacts = useOptions('contacts');
+    const families = useOptions('product-families');
 
-    // Group is a fixed domain: Material / FG (stored in m_i_category / category_id).
-    const GROUP_ORDER = { Material: 0, FG: 1 };
-    const groupOptions = (categories.data || [])
-        .filter((c) => c.name_c in GROUP_ORDER)
-        .sort((a, b) => GROUP_ORDER[a.name_c] - GROUP_ORDER[b.name_c]);
-    const materialGroupId = groupOptions.find((g) => g.name_c === 'Material')?.id;
-
-    // BOM pickers: RM = items in the Material group; PM = items flagged pm.
-    const isMaterial = (o) => materialGroupId != null && Number(o.category_id) === Number(materialGroupId);
-    const isPm = (o) => !!o.pm;
+    /*
+     * Pemilih BOM membaca golongan tersimpan, bukan kategori: baris RM hanya
+     * boleh berisi bahan baku, baris PM hanya komponen. Sebelumnya keduanya
+     * disaring lewat nama kategori yang tidak pernah cocok, sehingga daftarnya
+     * kosong dan pilihan Group pun tidak pernah muncul.
+     */
+    const isMaterial = (o) => o.type === 'RM';
+    const isPm = (o) => !!o.pm || o.type === 'PM';
 
     const list = useQuery({
         queryKey: ['items', { search, page }],
@@ -286,16 +298,27 @@ export default function ItemPage() {
                         <Text label="Part Number (Kode)" value={form.code} onChange={(v) => set('code', v)} required />
                         <Text label="Part Name" value={form.part_name} onChange={(v) => set('part_name', v)} required />
                         <div>
-                            <label className="field-label">Type <span className="text-red-500">*</span></label>
-                            <select className="field-input" value={form.type} onChange={(e) => set('type', e.target.value)}>
-                                <option value="">— pilih —</option>
-                                {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                            <label className="field-label">Group <span className="text-red-500">*</span></label>
+                            <select className="field-input" value={form.group} onChange={(e) => set('group', e.target.value)}>
+                                <option value="">— pilih Group —</option>
+                                {GROUPS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
                             </select>
+                            <p className="mt-0.5 text-[11px] text-slate-400">
+                                Material yang dicentang <b>PM</b> menjadi komponen (PM); tanpa centang menjadi bahan baku (RM).
+                            </p>
                         </div>
                         <div>
-                            <label className="field-label">Group <span className="text-red-500">*</span></label>
-                            <Select value={form.category_id} onChange={(v) => set('category_id', v)} options={groupOptions}
-                                getValue={(o) => o.id} getLabel={(o) => o.name_c} placeholder="— pilih Group (Material / FG) —" />
+                            <label className="field-label">Keluarga Produk</label>
+                            <Select value={form.family_id} onChange={(v) => set('family_id', v)} options={families.data}
+                                getValue={(o) => o.id} getLabel={(o) => `${o.code} — ${o.name}`} placeholder="— belum dikelompokkan —" />
+                            <p className="mt-0.5 text-[11px] text-slate-400">Dipakai laporan margin untuk melihat untung-rugi per keluarga, bukan per part.</p>
+                        </div>
+                        <div>
+                            <label className="field-label">Bentuk</label>
+                            <select className="field-input" value={form.shape ?? ''} onChange={(e) => set('shape', e.target.value)}>
+                                <option value="">— pilih bentuk —</option>
+                                {SHAPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                            </select>
                         </div>
                         <div className="sm:col-span-2">
                             <label className="field-label">Description</label>

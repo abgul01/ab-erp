@@ -5,7 +5,7 @@ import { useAuth } from '../../stores/auth';
 import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import Icon from '../../components/Icon';
-import { ItemSelect, Select, useOptions, StatusBadge, LineTable, CellInput } from './common';
+import { ItemSelect, Select, useOptions, StatusBadge, LineTable, CellInput, VendorSelect, money } from './common';
 
 const PR_TYPES = ['MANUAL', 'MRP', 'ADDITIONAL', 'NON_RM', 'NPD'];
 const today = () => new Date().toISOString().slice(0, 10);
@@ -25,6 +25,18 @@ export default function PrPage() {
         queryFn: async () => (await api.get('/pr', { params: { page, per_page: 15 } })).data,
     });
     const invalidate = () => qc.invalidateQueries({ queryKey: ['pr'] });
+
+    // Empty selects come back as '' and would fail an integer rule; send null,
+    // and drop the display-only hints picked up from the supplier master.
+    const payloadOf = (f) => ({
+        ...f,
+        lines: f.lines.map(({ _lead, _moq, ...l }) => ({
+            ...l,
+            ven_id: l.ven_id === '' ? null : l.ven_id,
+            est_price: l.est_price === '' ? null : l.est_price,
+            uom_id: l.uom_id === '' ? null : l.uom_id,
+        })),
+    });
 
     const save = useMutation({
         mutationFn: async (payload) => (modal.mode === 'edit' ? api.put(`/pr/${modal.id}`, payload) : api.post('/pr', payload)),
@@ -49,14 +61,38 @@ export default function PrPage() {
         const d = data.data;
         setForm({
             date: d.date?.slice(0, 10), pr_type: d.pr_type,
-            lines: (d.detail || []).map((l) => ({ item_id: l.item_id, qty: l.qty, uom_id: l.uom_id, note: l.note })),
+            lines: (d.detail || []).map((l) => ({ item_id: l.item_id, ven_id: l.ven_id || '', est_price: l.est_price ?? '', qty: l.qty, uom_id: l.uom_id, note: l.note })),
         });
         setModal({ mode: 'edit', id: row.id });
     };
     const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-    const addLine = () => set('lines', [...form.lines, { item_id: '', qty: 1, uom_id: '', note: '' }]);
+    const addLine = () => set('lines', [...form.lines, { item_id: '', ven_id: '', est_price: '', qty: 1, uom_id: '', note: '' }]);
     const setLine = (i, k, v) => set('lines', form.lines.map((l, j) => (j === i ? { ...l, [k]: v } : l)));
     const delLine = (i) => set('lines', form.lines.filter((_, j) => j !== i));
+
+    /*
+     * Picking a material fills in who normally supplies it, at what price and
+     * with how much notice — the same preferred supplier MRP plans against.
+     * Only fields the user has left blank are filled: a deliberate choice of
+     * vendor must not be overwritten by the master.
+     */
+    const pickItem = async (i, itemId) => {
+        setLine(i, 'item_id', itemId);
+        if (!itemId) return;
+        try {
+            const { data } = await api.get('/supplier-items/terms', { params: { item_id: itemId } });
+            const t = data.data.effective;
+            if (t.source !== 'SUPPLIER') return;
+            setForm((f) => ({
+                ...f,
+                lines: f.lines.map((l, j) => (j === i
+                    ? { ...l, ven_id: l.ven_id || t.ven_id, est_price: l.est_price === '' ? t.price : l.est_price, _lead: t.lead, _moq: t.moq }
+                    : l)),
+            }));
+        } catch {
+            // A missing supplier master is not a reason to block data entry.
+        }
+    };
 
     const columns = [
         { key: 'code', label: 'No. PR' },
@@ -91,7 +127,7 @@ export default function PrPage() {
             <Modal open={!!modal} onClose={() => setModal(null)} wide title={`${modal?.mode === 'edit' ? 'Edit' : 'Tambah'} PR`}
                 footer={<>
                     <button className="btn btn-ghost" onClick={() => setModal(null)}>Batal</button>
-                    <button className="btn btn-primary" onClick={() => { setError(''); save.mutate(form); }} disabled={save.isPending}>
+                    <button className="btn btn-primary" onClick={() => { setError(''); save.mutate(payloadOf(form)); }} disabled={save.isPending}>
                         {save.isPending ? <Icon name="spinner" className="h-4 w-4 animate-spin" /> : <Icon name="save" />} Simpan
                     </button>
                 </>}>
@@ -104,10 +140,16 @@ export default function PrPage() {
                         </select>
                     </div>
                 </div>
-                <LineTable title="Item Requisition" onAdd={addLine} lines={form.lines} empty="Belum ada item."
-                    head={['Item', 'Qty', 'UoM', 'Catatan', '']}
+                <LineTable title="Item Requisition" subtitle="Vendor & perkiraan harga terisi dari master Supplier Item — dipakai saat PR ditarik jadi PO."
+                    onAdd={addLine} lines={form.lines} empty="Belum ada item."
+                    head={['Item', 'Vendor usulan', 'Est. harga', 'Qty', 'UoM', 'Catatan', '']}
                     row={(l, i) => (<>
-                        <td className="min-w-[220px] px-2 py-1.5"><ItemSelect value={l.item_id} onChange={(v) => setLine(i, 'item_id', v)} /></td>
+                        <td className="min-w-[220px] px-2 py-1.5"><ItemSelect value={l.item_id} onChange={(v) => pickItem(i, v)} /></td>
+                        <td className="min-w-[180px] px-2 py-1.5">
+                            <VendorSelect value={l.ven_id} onChange={(v) => setLine(i, 'ven_id', v)} />
+                            {l._lead > 0 && <p className="mt-0.5 text-[11px] text-slate-400">lead time {l._lead} hari{l._moq > 0 ? `, MOQ ${money(l._moq)}` : ''}</p>}
+                        </td>
+                        <td className="w-32 px-2 py-1.5"><CellInput type="number" step="0.0001" value={l.est_price} onChange={(v) => setLine(i, 'est_price', v)} /></td>
                         <td className="w-24 px-2 py-1.5"><CellInput type="number" value={l.qty} onChange={(v) => setLine(i, 'qty', v)} /></td>
                         <td className="w-32 px-2 py-1.5"><Select value={l.uom_id} onChange={(v) => setLine(i, 'uom_id', v)} options={uoms.data} getValue={(o) => o.id} getLabel={(o) => o.code} placeholder="—" /></td>
                         <td className="px-2 py-1.5"><CellInput value={l.note} onChange={(v) => setLine(i, 'note', v)} /></td>

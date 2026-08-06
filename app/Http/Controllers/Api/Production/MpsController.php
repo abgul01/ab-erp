@@ -6,12 +6,13 @@ use App\Exceptions\BizException;
 use App\Http\Controllers\Controller;
 use App\Models\prd_mpp;
 use App\Models\prd_mps;
+use App\Models\prd_mps_resched;
 use App\Models\prd_wo_main;
 use App\Support\ApiResponse;
 use App\Support\AuditLogger;
 use App\Support\PlanningService;
+use App\Support\WorkCalendarService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 
 /**
  * Master Production Schedule (Fase 4 APS). Dated schedule entries per FG, capped
@@ -32,9 +33,9 @@ class MpsController extends Controller
         // Filter to a single month so the (large) operation-level board isn't
         // truncated by paging: `month`=YYYY-MM or `period`=YYYYMM.
         if ($m = $request->query('month')) {
-            $query->where('plan_date', 'like', $m . '-%');
+            $query->where('plan_date', 'like', $m.'-%');
         } elseif ($p = $request->query('period')) {
-            $query->where('plan_date', 'like', substr($p, 0, 4) . '-' . substr($p, 4, 2) . '-%');
+            $query->where('plan_date', 'like', substr($p, 0, 4).'-'.substr($p, 4, 2).'-%');
         }
         $query->orderBy('plan_date')->orderBy('machine_id');
         $page = $query->paginate(min(max((int) $request->query('per_page', 20), 1), 2000));
@@ -42,12 +43,12 @@ class MpsController extends Controller
         // lots with a pending reschedule request → the board blinks them yellow
         $ids = $page->getCollection()->pluck('id')->all();
         $pending = $ids
-            ? \App\Models\prd_mps_resched::whereIn('mps_id', $ids)->where('status', 'PENDING')->pluck('mps_id')->flip()
+            ? prd_mps_resched::whereIn('mps_id', $ids)->where('status', 'PENDING')->pluck('mps_id')->flip()
             : collect();
 
         // each lot's OP number = 1-based position of its process in the item's
         // routing, so the board can colour cells by operation step.
-        $planner = new \App\Support\PlanningService;
+        $planner = new PlanningService;
         $seqByItem = [];
         foreach ($page->getCollection()->pluck('item_id')->unique()->filter() as $itemId) {
             $map = [];
@@ -63,6 +64,7 @@ class MpsController extends Controller
             $m->wo_remaining = max(0, (int) $m->qty - $m->wo_qty);
             $m->pending = $pending->has($m->id);
             $m->op_seq = $m->proc_id ? ($seqByItem[$m->item_id][$m->proc_id] ?? null) : null;
+
             return $m;
         });
 
@@ -151,7 +153,7 @@ class MpsController extends Controller
         ]);
         $period = $data['period'];
         $planner = new PlanningService;
-        $like = substr($period, 0, 4) . '-' . substr($period, 4, 2) . '-%';
+        $like = substr($period, 0, 4).'-'.substr($period, 4, 2).'-%';
         $days = $this->workingDays($period);
         $nDays = count($days);
         $cap = PlanningService::WORK_SECONDS_PER_DAY;
@@ -181,7 +183,9 @@ class MpsController extends Controller
         }
         $del->delete();
 
-        $created = 0; $items = 0; $shortCapacity = 0;
+        $created = 0;
+        $items = 0;
+        $shortCapacity = 0;
 
         foreach ($mpps as $mpp) {
             $itemId = (int) $mpp->item_id;
@@ -189,8 +193,10 @@ class MpsController extends Controller
             $ops = $planner->routing($itemId);
             if (empty($ops)) {
                 // no routing/cycle time → single unscheduled lot on day 1
-                prd_mps::create(['plan_date' => $days[0] ?? ($period . '01'), 'item_id' => $itemId, 'proc_id' => null, 'qty' => $plan, 'machine_id' => null, 'status' => 'DRAFT']);
-                $created++; $items++;
+                prd_mps::create(['plan_date' => $days[0] ?? ($period.'01'), 'item_id' => $itemId, 'proc_id' => null, 'qty' => $plan, 'machine_id' => null, 'status' => 'DRAFT']);
+                $created++;
+                $items++;
+
                 continue;
             }
             $items++;
@@ -212,6 +218,7 @@ class MpsController extends Controller
                         $created++;
                     }
                     $startIdx = min($nDays - 1, $startIdx + 1);
+
                     continue;
                 }
 
@@ -262,22 +269,22 @@ class MpsController extends Controller
     }
 
     /** Weekday (Mon–Fri) dates of a YYYYMM period as Y-m-d strings. */
+    /**
+     * Dates the plant actually runs.
+     *
+     * This used to be "any day that is not a weekend", which quietly scheduled
+     * production onto national holidays and shutdowns. It now asks the working
+     * calendar; a month nobody has filled in still falls back to weekdays, so
+     * the schedule keeps working while the calendar is being set up.
+     */
     private function workingDays(string $period): array
     {
-        $start = Carbon::createFromFormat('Ymd', $period . '01')->startOfDay();
-        $days = [];
-        for ($d = $start->copy(); $d->format('Ym') === $period; $d->addDay()) {
-            if (! $d->isWeekend()) {
-                $days[] = $d->toDateString();
-            }
-        }
-
-        return $days;
+        return app(WorkCalendarService::class)->workingDates($period);
     }
 
     private function periodOf(string $date): string
     {
-        return substr($date, 0, 4) . substr($date, 5, 2);
+        return substr($date, 0, 4).substr($date, 5, 2);
     }
 
     /**
@@ -293,7 +300,7 @@ class MpsController extends Controller
             throw BizException::make('MPS_NO_MPP', "Belum ada MPP approved untuk item ini di periode {$period}. Buat & approve MPP dulu.");
         }
         $existing = (int) prd_mps::where('item_id', $itemId)
-            ->where('plan_date', 'like', substr($period, 0, 4) . '-' . substr($period, 4, 2) . '-%')
+            ->where('plan_date', 'like', substr($period, 0, 4).'-'.substr($period, 4, 2).'-%')
             ->when($procId !== null, fn ($q) => $q->where('proc_id', $procId), fn ($q) => $q->whereNull('proc_id'))
             ->when($excludeId, fn ($q) => $q->where('id', '<>', $excludeId))
             ->sum('qty');

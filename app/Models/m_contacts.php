@@ -2,19 +2,25 @@
 
 namespace App\Models;
 
+use App\Support\HasApproval;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class m_contacts extends Model
 {
+    use HasApproval;
     use HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'm_contacts';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [
+        'status',
         'u_code',
         'initial',
         'nick_n',
@@ -25,7 +31,9 @@ class m_contacts extends Model
         'email',
         'category_id',
         'identity',
-        'active'
+        'npwp',
+        'nik',
+        'active',
     ];
 
     public function acc_ap_pay_main()

@@ -10,8 +10,11 @@ class prc_cost_main extends Model
     use HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'prc_cost_main';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [
@@ -21,6 +24,10 @@ class prc_cost_main extends Model
         'gr_id',
         'inv_id',
         'alloc_basis',
+        'pph22_base',
+        'pph22_rate',
+        'pph22_amount',
+        'has_api',
         'status',
         'user_id',
     ];

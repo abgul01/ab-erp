@@ -8,6 +8,8 @@ use App\Models\prc_cost_main;
 use App\Models\prc_inv_main;
 use App\Support\ApiResponse;
 use App\Support\AuditLogger;
+use App\Support\ImportTaxService;
+use App\Support\KursService;
 use App\Support\NumberingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -51,6 +53,8 @@ class CostController extends Controller
                 'po_id' => $this->poIdFor($inv),
                 'gr_id' => optional(optional($inv->detail->first())->grDetail)->id_prim,
                 'alloc_basis' => $data['alloc_basis'] ?? 'WEIGHT',
+                'has_api' => $data['has_api'] ?? true,
+                'pph22_rate' => $data['pph22_rate'] ?? 0,
                 'status' => 'DRAFT',
                 'user_id' => $request->user()->id,
             ]);
@@ -77,6 +81,8 @@ class CostController extends Controller
                 'po_id' => $this->poIdFor($inv),
                 'gr_id' => optional(optional($inv->detail->first())->grDetail)->id_prim,
                 'alloc_basis' => $data['alloc_basis'] ?? 'WEIGHT',
+                'has_api' => $data['has_api'] ?? true,
+                'pph22_rate' => $data['pph22_rate'] ?? 0,
             ]);
             $cost->detail()->delete();
             $cost->alloc()->delete();
@@ -130,7 +136,11 @@ class CostController extends Controller
         }
         $totalCost = (float) $cost->detail->sum('amount_idr');
 
-        DB::transaction(function () use ($cost, $weights, $totalWeight, $totalCost, $request) {
+        // PPh 22 is a prepaid tax credit, so it is computed on the sheet but
+        // stays out of $totalCost — it must not raise the value of inventory.
+        $pph22 = app(ImportTaxService::class)->compute($cost, (float) $inv->dpp);
+
+        DB::transaction(function () use ($cost, $weights, $totalWeight, $totalCost, $pph22, $request) {
             $cost->alloc()->delete();
             foreach ($weights as $grDetailId => $w) {
                 $amount = round($totalCost * ($w / $totalWeight), 2);
@@ -141,8 +151,17 @@ class CostController extends Controller
                     'unit_cost_kg' => round($amount / $w, 4),
                 ]);
             }
-            $cost->update(['status' => 'FINAL']);
-            AuditLogger::record($request, "Finalize Landed Cost {$cost->code}", $cost->code);
+            $cost->update([
+                'status' => 'FINAL',
+                'pph22_base' => $pph22['base'],
+                'pph22_rate' => $pph22['rate'],
+                'pph22_amount' => $pph22['amount'],
+            ]);
+            AuditLogger::record(
+                $request,
+                "Finalize Landed Cost {$cost->code} (PPh 22 {$pph22['rate']}% = {$pph22['amount']})",
+                $cost->code
+            );
         });
 
         return ApiResponse::item($cost->load($this->with));
@@ -166,10 +185,21 @@ class CostController extends Controller
         }
     }
 
+    /**
+     * A cost line in foreign currency is converted at the KMK rate governing the
+     * sheet's date unless the user typed one — customs and VAT on an import must
+     * use the published tax rate, and remembering to look it up by hand is
+     * exactly the step that gets skipped.
+     */
     private function syncCosts(prc_cost_main $cost, array $costs): void
     {
+        $kurs = app(KursService::class);
+
         foreach ($costs as $c) {
-            $rate = (float) ($c['rate'] ?? 1);
+            $currencyId = $c['currency_id'] ?? null;
+            $rate = isset($c['rate']) && (float) $c['rate'] > 0
+                ? (float) $c['rate']
+                : ($currencyId ? ($kurs->rateOn((int) $currencyId, (string) $cost->date) ?? 1) : 1);
             $amount = (float) $c['amount'];
             $cost->detail()->create([
                 'cost_type' => $c['cost_type'],
@@ -188,6 +218,8 @@ class CostController extends Controller
             'date' => ['required', 'date'],
             'inv_id' => ['required', 'integer', 'exists:prc_inv_main,id'],
             'alloc_basis' => ['nullable', 'in:WEIGHT'],
+            'has_api' => ['nullable', 'boolean'],
+            'pph22_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'costs' => ['array'],
             'costs.*.cost_type' => ['required', 'string', 'max:30'],
             'costs.*.descrip' => ['nullable', 'string', 'max:200'],

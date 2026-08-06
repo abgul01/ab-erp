@@ -5,7 +5,7 @@ import { useAuth } from '../../stores/auth';
 import DataTable from '../../components/DataTable';
 import Icon from '../../components/Icon';
 
-const ym = () => new Date().toISOString().slice(0, 7).replace('-', '');
+import MonthPicker, { currentPeriod, formatPeriod } from '../../components/MonthPicker';
 const STYLE = { OPEN: 'bg-emerald-100 text-emerald-700', CLOSED: 'bg-amber-100 text-amber-700', LOCKED: 'bg-red-100 text-red-700' };
 
 /** Accounting periods: OPEN allows posting; CLOSED locks it (LOCKED = permanent). */
@@ -13,7 +13,7 @@ export default function PeriodPage() {
     const qc = useQueryClient();
     const can = useAuth((s) => s.can);
     const [page, setPage] = useState(1);
-    const [period, setPeriod] = useState(ym());
+    const [period, setPeriod] = useState(currentPeriod());
 
     const list = useQuery({ queryKey: ['acc-periods', { page }], queryFn: async () => (await api.get('/acc-periods', { params: { page, per_page: 60 } })).data });
     const invalidate = () => qc.invalidateQueries({ queryKey: ['acc-periods'] });
@@ -22,7 +22,7 @@ export default function PeriodPage() {
     const setStatus = useMutation({ mutationFn: async ({ id, status }) => api.post(`/acc-periods/${id}/status`, { status }), onSuccess: invalidate, onError: (e) => alert(apiError(e)) });
 
     const columns = [
-        { key: 'period', label: 'Periode' },
+        { key: 'period', label: 'Periode', render: formatPeriod },
         { key: 'status', label: 'Status', render: (v) => <span className={`rounded-full px-2 py-0.5 text-xs ${STYLE[v] || ''}`}>{v}</span> },
     ];
 
@@ -35,7 +35,7 @@ export default function PeriodPage() {
                 </div>
                 {can('acc-periods', 'create') && (
                     <div className="flex items-end gap-2">
-                        <div><label className="field-label">Periode baru</label><input className="field-input w-32" maxLength={6} value={period} onChange={(e) => setPeriod(e.target.value)} placeholder="202607" /></div>
+                        <div><label className="field-label">Periode baru</label><MonthPicker value={period} onChange={setPeriod} className="w-44" /></div>
                         <button className="btn btn-primary" onClick={() => add.mutate()} disabled={add.isPending}><Icon name="plus" /> Buka Periode</button>
                     </div>
                 )}

@@ -83,7 +83,13 @@ abstract class CrudController extends Controller
 
         AuditLogger::record($request, "Create {$this->label()} #{$record->getKey()}");
 
-        return ApiResponse::item($record->load($this->with()), 201);
+        /*
+         * Dibaca ulang dari database, bukan dikembalikan apa adanya: kolom yang
+         * nilainya diisi database — default `active`, timestamp, kolom yang
+         * dihitung trigger — tidak ada pada model hasil create, sehingga klien
+         * menerima record yang bolong pada bagian yang justru baru saja diisi.
+         */
+        return ApiResponse::item($record->refresh()->load($this->with()), 201);
     }
 
     public function update(Request $request, int $id)

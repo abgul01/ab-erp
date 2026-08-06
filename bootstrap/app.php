@@ -1,7 +1,10 @@
 <?php
 
 use App\Exceptions\BizException;
+use App\Http\Middleware\CheckClientUuid;
 use App\Http\Middleware\CheckPermission;
+use App\Http\Middleware\EnsurePeriodOpen;
+use App\Http\Middleware\EnsureVendor;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -20,6 +23,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'perm' => CheckPermission::class,
+            'period.open' => EnsurePeriodOpen::class,
+            'client-uuid' => CheckClientUuid::class,
+            'vendor' => EnsureVendor::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
@@ -28,7 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
         );
 
         // Uniform error envelope: { "errors": [ { code, message, field } ] }
-        $exceptions->render(function (\Throwable $e, Request $request) {
+        $exceptions->render(function (Throwable $e, Request $request) {
             if (! $request->is('api/*')) {
                 return null;
             }

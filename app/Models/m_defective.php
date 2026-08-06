@@ -10,12 +10,18 @@ class m_defective extends Model
     use HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'm_defective';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
-    protected $fillable = [
-        'type'
-    ];
+    public $timestamps = false;   // m_defective carries no timestamps
 
+    protected $fillable = [
+        'code',
+        'name',
+        'type',
+    ];
 }

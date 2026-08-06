@@ -23,6 +23,7 @@ class User extends Authenticatable
         'identity',
         'password',
         'status_id',
+        'ven_id',
     ];
 
     protected $hidden = [
@@ -47,6 +48,21 @@ class User extends Authenticatable
         return $this->hasMany(user_menu_permissions::class, 'user_id', 'id');
     }
 
+    /** The supplier a portal account belongs to; null for staff. */
+    public function ven()
+    {
+        return $this->belongsTo(m_contacts::class, 'ven_id', 'id');
+    }
+
+    /**
+     * Portal accounts live entirely inside /api/v1/vendor and see only their own
+     * supplier's documents. Staff accounts never have ven_id set.
+     */
+    public function isVendor(): bool
+    {
+        return $this->ven_id !== null;
+    }
+
     /**
      * Whether the user is the super admin (username "admin" or status ADMIN).
      * Super admin bypasses granular permission checks.
@@ -67,10 +83,10 @@ class User extends Authenticatable
             return true;
         }
 
-        $column = 'can_' . $action;
+        $column = 'can_'.$action;
 
         return $this->permissions()
-            ->where('can_' . $action, 1)
+            ->where('can_'.$action, 1)
             ->whereHas('menu', fn ($q) => $q->where('link', $menuLink))
             ->exists();
     }

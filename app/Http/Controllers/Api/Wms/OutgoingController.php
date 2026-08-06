@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Api\Wms;
 
 use App\Exceptions\BizException;
+use App\Http\Controllers\Api\Production\WoController;
 use App\Http\Controllers\Controller;
+use App\Models\prd_wo_main;
 use App\Models\wh_out_main;
 use App\Models\wh_rem_main;
 use App\Support\ApiResponse;
 use App\Support\AuditLogger;
 use App\Support\NumberingService;
+use App\Support\UomConversionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -53,20 +56,20 @@ class OutgoingController extends Controller
     public function checkWo(string $code)
     {
         $code = trim($code);
-        $wo = \App\Models\prd_wo_main::with(['fg', 'detailRm.rm', 'detailRm.serials'])->where('code', $code)->first();
+        $wo = prd_wo_main::with(['fg', 'detailRm.rm', 'detailRm.serials'])->where('code', $code)->first();
         if (! $wo) {
             $wipId = DB::table('prd_wip')->where('no_dp', $code)->orWhere('code', $code)->value('wo_id');
             if ($wipId) {
-                $wo = \App\Models\prd_wo_main::with(['fg', 'detailRm.rm', 'detailRm.serials'])->find($wipId);
+                $wo = prd_wo_main::with(['fg', 'detailRm.rm', 'detailRm.serials'])->find($wipId);
             }
         }
         if (! $wo && preg_match('/(\d+)\s*$/', $code, $m)) {
-            $wo = \App\Models\prd_wo_main::with(['fg', 'detailRm.rm', 'detailRm.serials'])->find((int) ltrim($m[1], '0'));
+            $wo = prd_wo_main::with(['fg', 'detailRm.rm', 'detailRm.serials'])->find((int) ltrim($m[1], '0'));
         }
         if (! $wo) {
             throw BizException::make('OUT_WO', "WO / Denpyou '{$code}' tidak ditemukan.");
         }
-        if ((int) $wo->status !== \App\Http\Controllers\Api\Production\WoController::RELEASED) {
+        if ((int) $wo->status !== WoController::RELEASED) {
             throw BizException::make('OUT_WO_STATE', "WO {$wo->code} belum/tidak lagi berstatus Released.");
         }
 
@@ -116,11 +119,11 @@ class OutgoingController extends Controller
         // booked to it (WO-driven issue). Without a WO, free issue of on-hand.
         $bookedSerials = null;
         if (! empty($data['wo_id'])) {
-            $wo = \App\Models\prd_wo_main::with('detailRm.serials')->find($data['wo_id']);
+            $wo = prd_wo_main::with('detailRm.serials')->find($data['wo_id']);
             if (! $wo) {
                 throw BizException::make('OUT_WO', 'Work Order tidak ditemukan.');
             }
-            if ((int) $wo->status !== \App\Http\Controllers\Api\Production\WoController::RELEASED) {
+            if ((int) $wo->status !== WoController::RELEASED) {
                 throw BizException::make('OUT_WO_STATE', 'Issue RM hanya untuk WO berstatus Released.');
             }
             $rmDetail = $wo->detailRm->firstWhere('rm_id', (int) $data['item_id']);
@@ -133,26 +136,27 @@ class OutgoingController extends Controller
         foreach ($data['lines'] as $i => $l) {
             $st = $states[$l['serial_id']] ?? null;
             if (! $st) {
-                throw BizException::make('OUT_STOCK', 'Baris #' . ($i + 1) . ": serial '{$l['serial_id']}' tidak ada di stok on-hand.");
+                throw BizException::make('OUT_STOCK', 'Baris #'.($i + 1).": serial '{$l['serial_id']}' tidak ada di stok on-hand.");
             }
             if ((int) $st['item_id'] !== (int) $data['item_id']) {
-                throw BizException::make('OUT_ITEM', 'Baris #' . ($i + 1) . ": serial '{$l['serial_id']}' bukan item dokumen ini.");
+                throw BizException::make('OUT_ITEM', 'Baris #'.($i + 1).": serial '{$l['serial_id']}' bukan item dokumen ini.");
             }
             if ($bookedSerials !== null && ! in_array((string) $l['serial_id'], $bookedSerials, true)) {
-                throw BizException::make('OUT_NOT_BOOKED', 'Baris #' . ($i + 1) . ": serial '{$l['serial_id']}' belum dibooking ke WO ini.");
+                throw BizException::make('OUT_NOT_BOOKED', 'Baris #'.($i + 1).": serial '{$l['serial_id']}' belum dibooking ke WO ini.");
             }
             $used = (float) ($l['length_used'] ?? $st['length']);
             if ($used > (float) $st['length']) {
-                throw BizException::make('OUT_LEN', 'Baris #' . ($i + 1) . ": length_used ({$used}) melebihi panjang serial ({$st['length']}).");
+                throw BizException::make('OUT_LEN', 'Baris #'.($i + 1).": length_used ({$used}) melebihi panjang serial ({$st['length']}).");
             }
             if (! empty($l['rem']) && empty($l['rem_rack_id'])) {
-                throw BizException::make('OUT_REMRACK', 'Baris #' . ($i + 1) . ': pilih rak remnant untuk pengembalian sisa.');
+                throw BizException::make('OUT_REMRACK', 'Baris #'.($i + 1).': pilih rak remnant untuk pengembalian sisa.');
             }
         }
 
         $shiftId = $data['shift_id'] ?? DB::table('m_shift')->orderBy('id')->value('id');
+        $uom = app(UomConversionService::class);
 
-        $doc = DB::transaction(function () use ($data, $states, $request, $shiftId) {
+        $doc = DB::transaction(function () use ($data, $states, $request, $shiftId, $uom) {
             $doc = wh_out_main::create([
                 'code' => (new NumberingService)->next('WH_OUT', 'OUT'),
                 'wo_id' => $data['wo_id'] ?? null,
@@ -170,7 +174,7 @@ class OutgoingController extends Controller
                 $used = (float) ($l['length_used'] ?? $lengthSerial);
                 $remLen = round($lengthSerial - $used, 2);
                 $weight = (float) ($st['weight'] ?? 0);
-                $weightUsed = $lengthSerial > 0 ? round($weight * ($used / $lengthSerial), 2) : $weight;
+                $weightUsed = $uom->usedKg($used, $weight, $lengthSerial);
                 $withRem = ! empty($l['rem']) && $remLen > 0;
 
                 $doc->detail()->create([
@@ -269,6 +273,7 @@ class OutgoingController extends Controller
 
             if (! $lastOutId) {
                 $states[$sid] = ['item_id' => $inc->item_id, 'length' => (float) $inc->length, 'weight' => (float) ($inc->weight ?? 0), 'source' => 'FULL'];
+
                 continue;
             }
             // Remnant yang dihasilkan outgoing terakhir itu = sisa yang masih on-hand.

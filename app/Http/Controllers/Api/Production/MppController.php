@@ -8,6 +8,8 @@ use App\Models\prd_mpp;
 use App\Models\prd_mps;
 use App\Support\ApiResponse;
 use App\Support\AuditLogger;
+use App\Support\FgStockService;
+use App\Support\ItemLifecycle;
 use App\Support\PlanningService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -42,7 +44,7 @@ class MppController extends Controller
         $mpp = prd_mpp::with('item')->findOrFail($id);
         $data = $mpp->toArray();
         $data['mps_qty'] = (int) prd_mps::where('item_id', $mpp->item_id)
-            ->where('plan_date', 'like', substr($mpp->period, 0, 4) . '-' . substr($mpp->period, 4, 2) . '-%')->sum('qty');
+            ->where('plan_date', 'like', substr($mpp->period, 0, 4).'-'.substr($mpp->period, 4, 2).'-%')->sum('qty');
 
         return ApiResponse::item($data);
     }
@@ -109,9 +111,11 @@ class MppController extends Controller
         $periods = $data['periods'] ?? [$data['period']];
         $source = $data['source'] ?? 'MAX';
         $planner = new PlanningService;
-        $fg = new \App\Support\FgStockService;
+        $fg = new FgStockService;
 
-        $created = 0; $updated = 0; $skipped = 0;
+        $created = 0;
+        $updated = 0;
+        $skipped = 0;
 
         foreach ($periods as $period) {
             $so = DB::table('sls_so_detail as d')->join('sls_so_main as m', 'm.id', '=', 'd.main_id')
@@ -167,11 +171,17 @@ class MppController extends Controller
 
     private function validateMpp(Request $request, ?int $id = null): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'period' => ['required', 'string', 'regex:/^\d{6}$/',
                 Rule::unique('prd_mpp', 'period')->where(fn ($q) => $q->where('item_id', $request->input('item_id')))->ignore($id)],
             'item_id' => ['required', 'integer', 'exists:m_item,id'],
             'plan_qty' => ['required', 'integer', 'min:1'],
         ], [], ['period' => 'periode (YYYYMM)']);
+
+        // Part yang masih diuji belum boleh direncanakan: rencana bulanan adalah
+        // hulu MRP, dan sekali masuk ke sini materialnya ikut dibeli.
+        ItemLifecycle::assertMassPro($data['item_id'], 'rencana produksi bulanan');
+
+        return $data;
     }
 }

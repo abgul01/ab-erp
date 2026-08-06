@@ -2,19 +2,25 @@
 
 namespace App\Models;
 
+use App\Support\HasApproval;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class m_quota extends Model
 {
+    use HasApproval;
     use HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'm_quota';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [
+        'status',
         'code',
         'descrip',
         'hs_code',

@@ -6,6 +6,7 @@ import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import Icon from '../../components/Icon';
 import { Select, useOptions, money } from '../procurement/common';
+import MonthPicker, { formatPeriod } from '../../components/MonthPicker';
 
 const ym = () => new Date().toISOString().slice(0, 7).replace('-', '');
 const EMPTY = { period: ym(), rate_type: 'LABOR', process_id: '', rate_per_hour: 0 };
@@ -38,7 +39,7 @@ export default function CostRatePage() {
     const submit = () => { setError(''); save.mutate({ ...form, process_id: form.process_id || null }); };
 
     const columns = [
-        { key: 'period', label: 'Periode' },
+        { key: 'period', label: 'Periode', render: formatPeriod },
         { key: 'rate_type', label: 'Jenis', render: (v) => <span className={`rounded px-1.5 py-0.5 text-xs ${v === 'LABOR' ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700'}`}>{v}</span> },
         { key: 'process_code', label: 'Proses' },
         { key: 'rate_per_hour', label: 'Tarif / Jam', className: 'text-right', render: (v) => `Rp ${money(v)}` },
@@ -69,7 +70,7 @@ export default function CostRatePage() {
                 </>}>
                 {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div><label className="field-label">Periode (YYYYMM) <span className="text-red-500">*</span></label><input className="field-input" maxLength={6} value={form.period} onChange={(e) => set('period', e.target.value)} placeholder="202607" /></div>
+                    <div><label className="field-label">Periode <span className="text-red-500">*</span></label><MonthPicker value={form.period} onChange={(v) => set('period', v)} className="w-full" /></div>
                     <div>
                         <label className="field-label">Jenis <span className="text-red-500">*</span></label>
                         <select className="field-input" value={form.rate_type} onChange={(e) => set('rate_type', e.target.value)}>

@@ -153,9 +153,10 @@ export default function SoPage() {
             <DataTable columns={columns} rows={list.data?.data || []} meta={list.data?.meta} loading={list.isLoading} onPageChange={setPage}
                 actions={(row) => (
                     <div className="flex justify-end gap-1">
-                        {row.status === 'DRAFT' && can('sales-orders', 'edit') && <button title="Approve" className="rounded p-1.5 text-emerald-600 hover:bg-emerald-50" onClick={() => act.mutate({ id: row.id, action: 'approve' })}><Icon name="check" /></button>}
+                        {row.status === 'DRAFT' && can('sales-orders', 'edit') && <button title="Submit" className="rounded p-1.5 text-amber-600 hover:bg-amber-50" onClick={() => act.mutate({ id: row.id, action: 'submit' })}><Icon name="send" /></button>}
+                        {row.status === 'SUBMITTED' && can('sales-orders', 'edit') && <button title="Approve" className="rounded p-1.5 text-emerald-600 hover:bg-emerald-50" onClick={() => act.mutate({ id: row.id, action: 'approve' })}><Icon name="check" /></button>}
                         {row.status === 'APPROVED' && can('sales-orders', 'edit') && <button title="Close" className="rounded p-1.5 text-blue-600 hover:bg-blue-50" onClick={() => act.mutate({ id: row.id, action: 'close' })}><Icon name="lock" /></button>}
-                        {['DRAFT', 'APPROVED'].includes(row.status) && can('sales-orders', 'edit') && <button title="Cancel" className="rounded p-1.5 text-red-600 hover:bg-red-50" onClick={() => window.confirm('Batalkan SO?') && act.mutate({ id: row.id, action: 'cancel' })}><Icon name="ban" /></button>}
+                        {['DRAFT', 'SUBMITTED', 'APPROVED'].includes(row.status) && can('sales-orders', 'edit') && <button title="Cancel" className="rounded p-1.5 text-red-600 hover:bg-red-50" onClick={() => window.confirm('Batalkan SO?') && act.mutate({ id: row.id, action: 'cancel' })}><Icon name="ban" /></button>}
                         {row.status === 'DRAFT' && can('sales-orders', 'edit') && <button title="Edit" className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" onClick={() => openEdit(row)}><Icon name="pencil" /></button>}
                         {row.status === 'DRAFT' && can('sales-orders', 'delete') && <button title="Hapus" className="rounded p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" onClick={() => window.confirm('Hapus SO?') && remove.mutate(row.id)}><Icon name="trash" /></button>}
                     </div>

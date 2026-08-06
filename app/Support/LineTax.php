@@ -8,24 +8,21 @@ namespace App\Support;
  * lain" factor — 11/12 for non-luxury under PMK 131/2024), while PPh is
  * withheld from the gross amount.
  *
+ * Delegates to TaxEngine (LLD §4.3). Kept as a static convenience for callers
+ * that already have resolved m_tax rows in hand.
+ *
  * Mirrored by calcLine() in resources/js/features/sales/SoPage.jsx so the
  * operator sees the same numbers that get stored — change both together.
  */
 class LineTax
 {
     /**
-     * @param  object|null  $ppnTax  m_tax row, or null when the line carries no PPN
-     * @param  object|null  $pphTax  m_tax row, or null when nothing is withheld
+     * @param  object|null  $ppnTax  m_tax row, or null
+     * @param  object|null  $pphTax  m_tax row, or null
      * @return array{dpp: float, ppn_value: float, pph_value: float}
      */
     public static function compute(float $subtotal, ?object $ppnTax, ?object $pphTax): array
     {
-        $dpp = $ppnTax ? round($subtotal * (float) $ppnTax->dpp_factor, 2) : $subtotal;
-
-        return [
-            'dpp' => $dpp,
-            'ppn_value' => $ppnTax ? round($dpp * (float) $ppnTax->rate_pct / 100, 2) : 0.0,
-            'pph_value' => $pphTax ? round($subtotal * (float) $pphTax->rate_pct / 100, 2) : 0.0,
-        ];
+        return TaxEngine::compute($subtotal, $ppnTax, $pphTax);
     }
 }

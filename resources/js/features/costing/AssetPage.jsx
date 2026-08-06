@@ -6,9 +6,9 @@ import DataTable from '../../components/DataTable';
 import Modal from '../../components/Modal';
 import Icon from '../../components/Icon';
 import { Select, useOptions, money } from '../procurement/common';
+import { MonthRangePicker, currentPeriod, formatPeriod, periodRange } from '../../components/MonthPicker';
 
 const today = () => new Date().toISOString().slice(0, 10);
-const ym = () => new Date().toISOString().slice(0, 7).replace('-', '');
 const EMPTY = { code: '', categ_id: '', name: '', acq_date: today(), acq_cost: 0, useful_life: '', machine_id: '', status: 'ACTIVE' };
 
 /** Fixed assets + straight-line monthly depreciation. */
@@ -19,8 +19,11 @@ export default function AssetPage() {
     const [modal, setModal] = useState(null);
     const [form, setForm] = useState(EMPTY);
     const [error, setError] = useState('');
-    const [period, setPeriod] = useState(ym());
+    // Depreciation is often caught up for several months at once after a late
+    // close, so the control is a range that defaults to this month alone.
+    const [range, setRange] = useState({ from: currentPeriod(), to: currentPeriod() });
     const [view, setView] = useState(null);
+    const periods = periodRange(range.from, range.to);
 
     const categs = useOptions('asset-categs');
     const machines = useOptions('machines');
@@ -33,8 +36,13 @@ export default function AssetPage() {
     });
     const remove = useMutation({ mutationFn: async (id) => api.delete(`/assets/${id}`), onSuccess: invalidate, onError: (e) => alert(apiError(e)) });
     const depre = useMutation({
-        mutationFn: async () => (await api.post('/assets/depreciate', { period })).data.data,
-        onSuccess: (d) => { invalidate(); alert(`Depresiasi ${d.period}: ${d.posted} aset diposting.`); }, onError: (e) => alert(apiError(e)),
+        mutationFn: async () => (await api.post('/assets/depreciate', { periods })).data.data,
+        onSuccess: (d) => {
+            invalidate();
+            const detail = Object.entries(d.by_period || {}).map(([p, n]) => `${formatPeriod(p)}: ${n}`).join('\n');
+            alert(`Depresiasi diposting untuk ${d.periods.length} bulan — total ${d.posted} baris.\n${detail}`);
+        },
+        onError: (e) => alert(apiError(e)),
     });
 
     const openCreate = () => { setForm(EMPTY); setError(''); setModal({ mode: 'create' }); };
@@ -65,9 +73,9 @@ export default function AssetPage() {
                     <h1 className="text-xl font-semibold text-slate-800">Aset & Depresiasi</h1>
                     <p className="text-xs text-slate-400">Depresiasi garis lurus: harga perolehan ÷ umur manfaat, diposting per bulan.</p>
                 </div>
-                <div className="flex items-end gap-2">
-                    <div><label className="field-label">Periode</label><input className="field-input w-32" maxLength={6} value={period} onChange={(e) => setPeriod(e.target.value)} placeholder="202607" /></div>
-                    {can('assets', 'create') && <button className="btn btn-ghost" onClick={() => depre.mutate()} disabled={depre.isPending}>{depre.isPending ? <Icon name="spinner" className="h-4 w-4 animate-spin" /> : <Icon name="calculator" />} Hitung Depresiasi</button>}
+                <div className="flex flex-wrap items-end gap-2">
+                    <MonthRangePicker from={range.from} to={range.to} onChange={setRange} disabled={depre.isPending} />
+                    {can('assets', 'create') && <button className="btn btn-ghost" disabled={depre.isPending || periods.length === 0} onClick={() => depre.mutate()}>{depre.isPending ? <Icon name="spinner" className="h-4 w-4 animate-spin" /> : <Icon name="calculator" />} {periods.length > 1 ? `Hitung Depresiasi (${periods.length} bln)` : 'Hitung Depresiasi'}</button>}
                     {can('assets', 'create') && <button className="btn btn-primary" onClick={openCreate}><Icon name="plus" /> Tambah Aset</button>}
                 </div>
             </div>

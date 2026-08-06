@@ -15,6 +15,7 @@ use App\Support\ApiResponse;
 use App\Support\AuditLogger;
 use App\Support\NumberingService;
 use App\Support\PlanningService;
+use App\Support\WhsStockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -107,7 +108,8 @@ class CuttingController extends Controller
 
         $page->getCollection()->transform(function ($m) use ($wipCodes, $stats) {
             $st = $stats->get($m->id);
-            $n = (int) ($st->n ?? 0); $done = (int) ($st->done ?? 0);
+            $n = (int) ($st->n ?? 0);
+            $done = (int) ($st->done ?? 0);
             $m->wip_code = $wipCodes[$m->wip_id] ?? null;
             $m->machines = $n;
             $m->status = $n > 0 && $done >= $n ? 'FINISHED' : 'RUNNING';
@@ -151,7 +153,7 @@ class CuttingController extends Controller
                 $secs = $this->elapsedSec($d->start_time, $d->end_time);
 
                 return [
-                    'machine' => $d->machine ? $d->machine->code . ' — ' . $d->machine->name : '—',
+                    'machine' => $d->machine ? $d->machine->code.' — '.$d->machine->name : '—',
                     'start_time' => $d->start_time, 'end_time' => $d->end_time,
                     'duration' => $secs === null ? null : $this->hm($secs),
                     'downtimes' => ($downtimes[$d->id] ?? collect())->map(fn ($x) => [
@@ -191,7 +193,7 @@ class CuttingController extends Controller
     /** "3h 56m" from a number of seconds. */
     private function hm(int $sec): string
     {
-        return intdiv($sec, 3600) . 'h ' . intdiv($sec % 3600, 60) . 'm';
+        return intdiv($sec, 3600).'h '.intdiv($sec % 3600, 60).'m';
     }
 
     /**
@@ -218,7 +220,7 @@ class CuttingController extends Controller
         if (! $wip) {
             $wip = prd_wip::firstOrCreate(
                 ['wo_id' => $wo->id],
-                ['code' => substr('WIP-' . $noDp, 0, 50), 'item_id' => $wo->fg_id]
+                ['code' => substr('WIP-'.$noDp, 0, 50), 'item_id' => $wo->fg_id]
             );
         }
         // stamp the scan on first use
@@ -335,6 +337,7 @@ class CuttingController extends Controller
             'subcont' => (int) ($data['subcont'] ?? 0),
             'sub_code' => $data['sub_code'] ?? null,
             'repair' => (int) ($data['repair'] ?? 0),
+            'client_uuid' => $request->input('client_uuid'),
         ]);
         AuditLogger::record($request, "Start cutting {$main->code} (WIP {$wip->code})", $main->code);
 
@@ -437,7 +440,7 @@ class CuttingController extends Controller
             throw BizException::make('CUT_MACHINE_DUP', 'Mesin ini sudah aktif pada transaksi ini.');
         }
         if (tr_cut_detail::where('main_id', $main->id)->count() >= self::MAX_MACHINE) {
-            throw BizException::make('CUT_MACHINE_MAX', 'Maksimal ' . self::MAX_MACHINE . ' mesin per transaksi cutting.');
+            throw BizException::make('CUT_MACHINE_MAX', 'Maksimal '.self::MAX_MACHINE.' mesin per transaksi cutting.');
         }
         tr_cut_detail::create([
             'main_id' => $main->id, 'machine_id' => $machineId,
@@ -529,7 +532,8 @@ class CuttingController extends Controller
             'serials' => ['required', 'array', 'min:1'],
             'serials.*' => ['string', 'max:50'],
         ]);
-        $added = 0; $skipped = [];
+        $added = 0;
+        $skipped = [];
         foreach ($data['serials'] as $sn) {
             try {
                 $this->addSerial(new Request(['serial_id' => $sn]), $detailId);
@@ -565,7 +569,7 @@ class CuttingController extends Controller
         }
 
         $id = DB::table('tr_dt_cut_main')->insertGetId([
-            'code' => substr('DT-' . $main->code . '-' . $det->id, 0, 20),
+            'code' => substr('DT-'.$main->code.'-'.$det->id, 0, 20),
             'user_id' => $this->userCode($request),
             'cut_id' => $main->id, 'det_cut_id' => $det->id, 'machine_id' => $det->machine_id,
             'no_dp' => $main->no_dp, 'cat_id' => $data['cat_id'],
@@ -590,10 +594,19 @@ class CuttingController extends Controller
         if (! $dt) {
             throw BizException::make('DT_404', 'Downtime tidak ditemukan.');
         }
-        DB::transaction(function () use ($data, $id) {
-            foreach ($data['tools'] ?? [] as $t) {
+
+        /*
+         * Serial harus benar-benar dikenal gudang WHS — batch sparepart dari
+         * penerimaan, atau unit alat. Sebelumnya kolom ini menerima ketikan
+         * bebas, jadi catatan "ganti tools" tidak bisa ditelusuri ke barang mana
+         * pun: satu salah ketik dan riwayat pemakaian sparepart mesin ini hilang.
+         */
+        $resolved = app(WhsStockService::class)->resolveCodes($data['tools'] ?? [], 'serial_item');
+
+        DB::transaction(function () use ($resolved, $id) {
+            foreach ($resolved as $t) {
                 DB::table('tr_dt_cut_detail')->insert([
-                    'main_id' => $id, 'serial_item' => $t['serial_item'], 'tools_id' => $t['tools_id'] ?? 0,
+                    'main_id' => $id, 'serial_item' => $t['serial'], 'tools_id' => $t['item_id'],
                 ]);
             }
             DB::table('tr_dt_cut_main')->where('id', $id)
@@ -635,7 +648,7 @@ class CuttingController extends Controller
 
         $abId = DB::transaction(function () use ($data, $det, $main, $user) {
             $abId = DB::table('tr_ab_cut_main')->insertGetId([
-                'code' => substr('AB-' . $main->code . '-' . $det->id, 0, 20),
+                'code' => substr('AB-'.$main->code.'-'.$det->id, 0, 20),
                 'wip_id' => $main->wip_id, 'user_id' => $user,
                 'cut_id' => $main->id, 'det_cut_id' => $det->id,
                 'process_id' => $main->process_id, 'date' => $main->date,
@@ -734,6 +747,7 @@ class CuttingController extends Controller
             }
 
             $n = tr_cut_pal_pr::where('cut_id', $main->id)->count() + 1;
+
             return tr_cut_pal_pr::create([
                 'code' => substr(sprintf('%s-%d-1', $wip->code, $n), 0, 20),
                 'cut_id' => $main->id, 'qty' => $total, 'process_id' => $nextProc,

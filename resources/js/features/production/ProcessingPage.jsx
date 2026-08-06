@@ -5,6 +5,7 @@ import { useAuth } from '../../stores/auth';
 import { money } from '../procurement/common';
 import Modal from '../../components/Modal';
 import { Timer, Stepper, KplModal, ViewProcessingModal, ViewPalletModal } from './mesShared';
+import OfflineBar from './OfflineBar';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const MAX_MACHINE = 2;   // processing: 2 machines per transaction
@@ -38,6 +39,8 @@ export default function ProcessingPage() {
     const [palletId, setPalletId] = useState(null);   // Print Pallet → pallet list
 
     const dtCats = useQuery({ queryKey: ['dt-cats', 'pro'], queryFn: async () => (await api.get('/mes/processing/dt-categories')).data.data });
+    // Serial batch sparepart + nomor unit alat yang dikenal gudang WHS.
+    const whsCodes = useQuery({ queryKey: ['whs-codes', 'pro'], queryFn: async () => (await api.get('/mes/processing/whs-codes')).data.data, staleTime: 60_000 });
 
     const list = useQuery({
         queryKey: ['pro', 'list'],
@@ -129,6 +132,7 @@ export default function ProcessingPage() {
 
     return (
         <div className="space-y-4 p-6">
+            <OfflineBar />
             {mode === 'list' && (
                 <div className="rounded-md border border-slate-300 bg-white">
                     <div className="flex items-center justify-between border-b border-slate-300 bg-slate-50 px-4 py-2">
@@ -472,18 +476,28 @@ export default function ProcessingPage() {
                                     } catch (e) { alert(apiError(e)); }
                                 }}>Start</button>
                         </div>
+                        {/* Sama seperti cutting: serial dicocokkan ke gudang WHS saat dipindai. */}
                         <div>
-                            <input className="field-input w-64" placeholder="Scan Tools" disabled={!dt.dtId}
+                            <input className="field-input w-72" placeholder="Scan serial sparepart / nomor unit alat" disabled={!dt.dtId}
+                                list="whs-codes-pro"
                                 value={dt.toolInput} onChange={(e) => setDt({ ...dt, toolInput: e.target.value })}
-                                onKeyDown={(e) => { if (e.key === 'Enter' && dt.toolInput) setDt({ ...dt, tools: [...dt.tools, { serial_tool: dt.toolInput, tools_id: 0 }], toolInput: '' }); }} />
+                                onKeyDown={(e) => {
+                                    if (e.key !== 'Enter' || !dt.toolInput) return;
+                                    const found = (whsCodes.data || []).find((c) => c.serial_code === dt.toolInput.trim());
+                                    if (!found) { alert(`Serial "${dt.toolInput}" tidak dikenal gudang WHS.`); return; }
+                                    setDt({ ...dt, tools: [...dt.tools, { serial_tool: found.serial_code, tools_id: found.item_id, name: found.item_name }], toolInput: '' });
+                                }} />
+                            <datalist id="whs-codes-pro">
+                                {(whsCodes.data || []).map((c) => <option key={c.serial_code} value={c.serial_code}>{c.label}</option>)}
+                            </datalist>
                         </div>
                         <div>
-                            <div className="mb-1 text-sm font-semibold text-slate-700">Flow Process</div>
+                            <div className="mb-1 text-sm font-semibold text-slate-700">Sparepart / alat yang dipakai</div>
                             <table className="w-full text-sm">
-                                <thead><tr className="bg-slate-50 text-left text-xs font-semibold text-slate-600"><th className={cell}>Serial Part</th><th className={cell}>Tools</th></tr></thead>
+                                <thead><tr className="bg-slate-50 text-left text-xs font-semibold text-slate-600"><th className={cell}>Serial</th><th className={cell}>Barang WHS</th></tr></thead>
                                 <tbody>
-                                    {dt.tools.length === 0 && <tr><td className={cell} colSpan={2}>Belum ada tools discan.</td></tr>}
-                                    {dt.tools.map((x, i) => <tr key={i}><td className={cell}>{x.serial_tool}</td><td className={cell}>{x.tools_id || '-'}</td></tr>)}
+                                    {dt.tools.length === 0 && <tr><td className={cell} colSpan={2}>Belum ada yang discan.</td></tr>}
+                                    {dt.tools.map((x, i) => <tr key={i}><td className={cell}>{x.serial_tool}</td><td className={cell}>{x.name || x.tools_id || '-'}</td></tr>)}
                                 </tbody>
                             </table>
                         </div>

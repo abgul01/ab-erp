@@ -7,7 +7,9 @@ use App\Http\Controllers\Controller;
 use App\Models\m_item_customer;
 use App\Models\sls_so_main;
 use App\Support\ApiResponse;
+use App\Support\ApprovalEngine;
 use App\Support\AuditLogger;
+use App\Support\ItemLifecycle;
 use App\Support\LineTax;
 use App\Support\NumberingService;
 use Illuminate\Http\Request;
@@ -117,14 +119,53 @@ class SoController extends Controller
         return ApiResponse::item(['message' => 'SO berhasil dihapus.']);
     }
 
+    public function submit(Request $request, int $id)
+    {
+        $so = sls_so_main::with('detail')->findOrFail($id);
+        if ($so->status !== 'DRAFT') {
+            throw BizException::make('SO_STATE', 'Hanya SO DRAFT yang dapat disubmit.');
+        }
+        if ($so->detail->isEmpty()) {
+            throw BizException::make('SO_EMPTY', 'SO tanpa baris item tidak dapat disubmit.');
+        }
+        $so->submitForApproval();
+        AuditLogger::record($request, "Submit SO {$so->code}", $so->code);
+
+        return ApiResponse::item($so->load($this->with));
+    }
+
     public function approve(Request $request, int $id)
     {
-        return $this->transition($request, $id, 'DRAFT', 'APPROVED', 'Approve');
+        $so = sls_so_main::findOrFail($id);
+        if ($so->status !== 'SUBMITTED') {
+            throw BizException::make('SO_STATE', 'SO harus berstatus SUBMITTED untuk di-approve.');
+        }
+        $engine = app(ApprovalEngine::class);
+        $engine->approve($so, $request->user(), $request->input('note'));
+
+        return ApiResponse::item($so->fresh()->load($this->with));
+    }
+
+    public function reject(Request $request, int $id)
+    {
+        $so = sls_so_main::findOrFail($id);
+        $request->validate(['note' => 'required|string|max:300']);
+        $engine = app(ApprovalEngine::class);
+        $engine->reject($so, $request->user(), $request->input('note'));
+
+        return ApiResponse::item($so->fresh()->load($this->with));
     }
 
     public function close(Request $request, int $id)
     {
-        return $this->transition($request, $id, 'APPROVED', 'CLOSED', 'Close');
+        $so = sls_so_main::findOrFail($id);
+        if ($so->status !== 'APPROVED') {
+            throw BizException::make('SO_STATE', 'Hanya SO APPROVED yang dapat di-close.');
+        }
+        $so->update(['status' => 'CLOSED']);
+        AuditLogger::record($request, "Close SO {$so->code}", $so->code);
+
+        return ApiResponse::item($so->load($this->with));
     }
 
     public function cancel(Request $request, int $id)
@@ -135,21 +176,6 @@ class SoController extends Controller
         }
         $so->update(['status' => 'CANCELLED']);
         AuditLogger::record($request, "Cancel SO {$so->code}", $so->code);
-
-        return ApiResponse::item($so->load($this->with));
-    }
-
-    private function transition(Request $request, int $id, string $from, string $to, string $verb)
-    {
-        $so = sls_so_main::with('detail')->findOrFail($id);
-        if ($so->status !== $from) {
-            throw BizException::make('SO_STATE', "SO harus berstatus {$from} untuk {$verb}.");
-        }
-        if ($to === 'APPROVED' && $so->detail->isEmpty()) {
-            throw BizException::make('SO_EMPTY', 'SO tanpa baris item tidak dapat di-approve.');
-        }
-        $so->update(['status' => $to]);
-        AuditLogger::record($request, "{$verb} SO {$so->code}", $so->code);
 
         return ApiResponse::item($so->load($this->with));
     }
@@ -167,9 +193,20 @@ class SoController extends Controller
         $allowed = m_item_customer::where('cus_id', $data['cus_id'])->where('active', 1)->pluck('item_id')->all();
         foreach ($data['lines'] ?? [] as $i => $l) {
             if (! in_array((int) $l['item_id'], $allowed, true)) {
-                throw BizException::make('SO_ITEM', 'Baris #' . ($i + 1) . ': item belum terdaftar untuk customer ini (tab Customer di Item Master).');
+                throw BizException::make('SO_ITEM', 'Baris #'.($i + 1).': item belum terdaftar untuk customer ini (tab Customer di Item Master).');
             }
         }
+
+        /*
+         * Dan part-nya harus sudah lulus uji coba. Menjual barang yang masih
+         * trial berarti menjanjikan tanggal kirim atas sesuatu yang belum tentu
+         * lolos PPAP — sampel trial dikirim lewat jalurnya sendiri, bukan lewat
+         * Sales Order.
+         */
+        ItemLifecycle::assertMassPro(
+            collect($data['lines'] ?? [])->pluck('item_id')->all(),
+            'sales order'
+        );
     }
 
     private function syncLines(sls_so_main $so, array $lines): void

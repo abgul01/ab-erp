@@ -8,6 +8,7 @@ import Icon from '../../components/Icon';
 import PickerModal from '../../components/PickerModal';
 import { ITEM_COLUMNS } from '../procurement/PoPage';
 import { Select, useOptions, CellInput, money } from '../procurement/common';
+import MonthPicker, { formatPeriod } from '../../components/MonthPicker';
 
 const thisPeriod = () => { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`; };
 const VERSIONS = ['FINAL', 'N-1', 'N-2', 'N-3'];
@@ -39,7 +40,7 @@ export default function ForecastPage() {
     const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
     const columns = [
-        { key: 'period', label: 'Periode', render: (v) => `${v?.slice(0, 4)}-${v?.slice(4, 6)}` },
+        { key: 'period', label: 'Periode', render: formatPeriod },
         { key: 'cus', label: 'Customer', render: (v) => v?.company_n || '—' },
         { key: 'item', label: 'Item', render: (v) => (v ? `${v.code} — ${v.part_name}` : '—') },
         { key: 'version', label: 'Versi' },
@@ -71,7 +72,7 @@ export default function ForecastPage() {
                 {error && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
                 {form && (
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div><label className="field-label">Periode (YYYYMM) <span className="text-red-500">*</span></label><input className="field-input" value={form.period} onChange={(e) => set('period', e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="202607" /></div>
+                        <div><label className="field-label">Periode <span className="text-red-500">*</span></label><MonthPicker value={form.period} onChange={(v) => set('period', v)} className="w-full" /></div>
                         <div><label className="field-label">Versi <span className="text-red-500">*</span></label>
                             <select className="field-input" value={form.version} onChange={(e) => set('version', e.target.value)}>{VERSIONS.map((v) => <option key={v} value={v}>{v}</option>)}</select></div>
                         <div><label className="field-label">Customer <span className="text-red-500">*</span></label>

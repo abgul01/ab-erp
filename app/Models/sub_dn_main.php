@@ -10,8 +10,11 @@ class sub_dn_main extends Model
     use HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'sub_dn_main';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [
@@ -25,7 +28,7 @@ class sub_dn_main extends Model
 
     public function po()
     {
-        return $this->belongsTo(prc_po_main::class, 'po_id', 'id');
+        return $this->belongsTo(sub_po_main::class, 'po_id', 'id');
     }
 
     public function ven()

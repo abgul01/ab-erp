@@ -2,21 +2,27 @@
 
 namespace App\Models;
 
+use App\Support\HasApproval;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class m_bom extends Model
 {
+    use HasApproval;
     use HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'm_bom';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [
+        'status',
         'item_id',
-        'active'
+        'active',
     ];
 
     public function item()

@@ -2,19 +2,25 @@
 
 namespace App\Models;
 
+use App\Support\HasApproval;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class sls_forecast extends Model
 {
+    use HasApproval;
     use HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'sls_forecast';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [
+        'status',
         'cus_id',
         'item_id',
         'period',

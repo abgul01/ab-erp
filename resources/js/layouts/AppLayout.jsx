@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../stores/auth';
 import Icon from '../components/Icon';
+import Modal from '../components/Modal';
+import { apiError } from '../api/client';
 
 function MenuGroup({ menu, isOpen, onToggle }) {
     const hasChildren = menu.children && menu.children.length > 0;
@@ -58,12 +60,16 @@ function MenuGroup({ menu, isOpen, onToggle }) {
 }
 
 export default function AppLayout() {
-    const { user, menus, logout } = useAuth();
+    const { user, menus, logout, changePassword } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const [mobileOpen, setMobileOpen] = useState(false);
     const [openId, setOpenId] = useState(null);
     const [tabs, setTabs] = useState([{ path: '/', label: 'Dashboard' }]);
+    const [pwOpen, setPwOpen] = useState(false);
+    const [pwValues, setPwValues] = useState({ current: '', next: '', confirm: '' });
+    const [pwError, setPwError] = useState('');
+    const [pwSaving, setPwSaving] = useState(false);
 
     // path -> menu label
     const labelMap = useMemo(() => {
@@ -98,7 +104,30 @@ export default function AppLayout() {
         });
     };
 
+    // Close every tab back to a single Dashboard tab.
+    const closeAllTabs = () => {
+        setTabs([{ path: '/', label: 'Dashboard' }]);
+        if (location.pathname !== '/') navigate('/');
+    };
+
     const doLogout = async () => { await logout(); navigate('/login', { replace: true }); };
+
+    const submitPassword = async (e) => {
+        e.preventDefault();
+        setPwError('');
+        if (pwValues.next.length < 6) return setPwError('Password minimal 6 karakter.');
+        if (pwValues.next !== pwValues.confirm) return setPwError('Konfirmasi password tidak sama.');
+        setPwSaving(true);
+        try {
+            await changePassword(pwValues.current, pwValues.next);
+            setPwOpen(false);
+            setPwValues({ current: '', next: '', confirm: '' });
+        } catch (err) {
+            setPwError(apiError(err, 'Gagal mengganti password.'));
+        } finally {
+            setPwSaving(false);
+        }
+    };
 
     return (
         <div className="flex h-screen overflow-hidden">
@@ -143,8 +172,46 @@ export default function AppLayout() {
                         <button onClick={doLogout} className="rounded p-2 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Logout">
                             <Icon name="logout" className="h-5 w-5" />
                         </button>
+                        <button onClick={() => { setPwError(''); setPwValues({ current: '', next: '', confirm: '' }); setPwOpen(true); }}
+                            className="rounded p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-600" title="Ganti Password">
+                            <Icon name="lock" className="h-5 w-5" />
+                        </button>
                     </div>
                 </header>
+
+                <Modal
+                    open={pwOpen}
+                    onClose={() => setPwOpen(false)}
+                    title="Ganti Password"
+                    footer={
+                        <>
+                            <button className="btn btn-ghost" onClick={() => setPwOpen(false)}>Batal</button>
+                            <button className="btn btn-primary" onClick={submitPassword} disabled={pwSaving}>
+                                {pwSaving ? <Icon name="spinner" className="h-4 w-4 animate-spin" /> : <Icon name="save" />}
+                                Simpan
+                            </button>
+                        </>
+                    }
+                >
+                    {pwError && <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{pwError}</div>}
+                    <form onSubmit={submitPassword} className="grid grid-cols-1 gap-4">
+                        <div>
+                            <label className="field-label">Password Saat Ini <span className="text-red-500">*</span></label>
+                            <input className="field-input" type="password" value={pwValues.current}
+                                onChange={(e) => setPwValues((v) => ({ ...v, current: e.target.value }))} />
+                        </div>
+                        <div>
+                            <label className="field-label">Password Baru <span className="text-red-500">*</span></label>
+                            <input className="field-input" type="password" value={pwValues.next}
+                                onChange={(e) => setPwValues((v) => ({ ...v, next: e.target.value }))} />
+                        </div>
+                        <div>
+                            <label className="field-label">Konfirmasi Password Baru <span className="text-red-500">*</span></label>
+                            <input className="field-input" type="password" value={pwValues.confirm}
+                                onChange={(e) => setPwValues((v) => ({ ...v, confirm: e.target.value }))} />
+                        </div>
+                    </form>
+                </Modal>
 
                 {/* Tab bar */}
                 <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 bg-slate-50 px-2 py-1.5">
@@ -165,6 +232,12 @@ export default function AppLayout() {
                             </div>
                         );
                     })}
+                    {tabs.length > 1 && (
+                        <button onClick={closeAllTabs} title="Tutup semua tab"
+                            className="ml-1 flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-transparent px-2.5 py-1 text-xs text-slate-500 transition hover:bg-white/70 hover:text-red-600">
+                            <Icon name="x" className="h-3 w-3" /> Tutup Semua
+                        </button>
+                    )}
                 </div>
 
                 <main className="flex-1 overflow-y-auto">

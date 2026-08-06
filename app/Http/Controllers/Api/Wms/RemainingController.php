@@ -10,6 +10,7 @@ use App\Models\wh_rem_main;
 use App\Support\ApiResponse;
 use App\Support\AuditLogger;
 use App\Support\NumberingService;
+use App\Support\UomConversionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -45,12 +46,13 @@ class RemainingController extends Controller
         $returned = wh_rem_detail::whereIn('id_prim', wh_rem_main::where('out_id', $outId)->pluck('id'))
             ->pluck('serial_id')->all();
 
+        $uom = app(UomConversionService::class);
         $rows = $out->detail
             ->filter(fn ($d) => (float) $d->length_rem > 0 && ! in_array($d->serial_id, $returned, true))
             ->map(fn ($d) => [
                 'serial_id' => $d->serial_id,
                 'length_rem' => (float) $d->length_rem,
-                'weight_rem' => round(max(0, (float) ($d->length_serial > 0 ? ($d->weight_used / max($d->length_used, 0.0001)) * $d->length_rem : 0)), 2),
+                'weight_rem' => max(0, $uom->remKg((float) $d->length_rem, (float) $d->weight_used, (float) $d->length_serial)),
             ])->values();
 
         return ApiResponse::collection($rows);
@@ -77,16 +79,16 @@ class RemainingController extends Controller
         foreach ($data['lines'] as $i => $l) {
             $d = $outDetails->get($l['serial_id']);
             if (! $d) {
-                throw BizException::make('RM_SERIAL', 'Baris #' . ($i + 1) . ": serial '{$l['serial_id']}' tidak ada pada outgoing terpilih.");
+                throw BizException::make('RM_SERIAL', 'Baris #'.($i + 1).": serial '{$l['serial_id']}' tidak ada pada outgoing terpilih.");
             }
             if ((float) $d->length_rem <= 0) {
-                throw BizException::make('RM_NOREM', 'Baris #' . ($i + 1) . ": serial '{$l['serial_id']}' tidak memiliki sisa.");
+                throw BizException::make('RM_NOREM', 'Baris #'.($i + 1).": serial '{$l['serial_id']}' tidak memiliki sisa.");
             }
             if (in_array($l['serial_id'], $returned, true)) {
-                throw BizException::make('RM_DUP', 'Baris #' . ($i + 1) . ": sisa serial '{$l['serial_id']}' sudah pernah dikembalikan.");
+                throw BizException::make('RM_DUP', 'Baris #'.($i + 1).": sisa serial '{$l['serial_id']}' sudah pernah dikembalikan.");
             }
             if ((float) $l['length'] > (float) $d->length_rem) {
-                throw BizException::make('RM_LEN', 'Baris #' . ($i + 1) . ": panjang ({$l['length']}) melebihi sisa tercatat ({$d->length_rem}).");
+                throw BizException::make('RM_LEN', 'Baris #'.($i + 1).": panjang ({$l['length']}) melebihi sisa tercatat ({$d->length_rem}).");
             }
         }
 

@@ -19,7 +19,8 @@ export const ITEM_COLUMNS = [
     { key: 'height', label: 'Height', className: 'text-right' },
 ];
 
-const PO_TYPES = ['RM', 'GENERAL', 'NPD', 'SERVICE', 'SUBCONT', 'ASSET'];
+// SUBCONT dipisah ke dokumen PO Subcont tersendiri (menu Procurement → PO Subcont)
+const PO_TYPES = ['RM', 'GENERAL', 'NPD', 'SERVICE', 'ASSET'];
 const today = () => new Date().toISOString().slice(0, 10);
 const EMPTY = { date: today(), po_type: 'RM', source: 'LOCAL', ven_id: '', quota_id: '', currency_id: '', rate: 1, top_days: 30, eta: '', lines: [] };
 
@@ -104,7 +105,31 @@ export default function PoPage() {
     const doPull = async () => {
         if (!pullPr) return;
         const { data } = await api.get(`/pr/${pullPr}`);
-        const lines = (data.data.detail || []).map((l) => ({ pr_detail_id: l.id, item_id: l.item_id, qty: l.qty, uom_id: l.uom_id || '', price: 0, price_kg: '', tax_id: '', est_weight_unit: '', est_length_unit: '' }));
+        let detail = data.data.detail || [];
+
+        /*
+         * A requisition raised by MRP already names a supplier per line, but a
+         * purchase order goes to exactly one vendor. So: adopt the requisition's
+         * vendor when the PO has none yet and the lines agree on one, and pull
+         * only the lines that belong to this vendor — lines meant for another
+         * mill stay behind for their own PO instead of being silently
+         * re-addressed to whoever this order happens to be for.
+         */
+        const suggested = [...new Set(detail.map((l) => l.ven_id).filter(Boolean))];
+        let venId = form.ven_id;
+        if (!venId && suggested.length === 1) { venId = suggested[0]; set('ven_id', venId); }
+
+        if (venId && suggested.length > 0) {
+            const mine = detail.filter((l) => !l.ven_id || l.ven_id === venId);
+            if (mine.length < detail.length) {
+                setError(`${detail.length - mine.length} baris PR ditujukan ke vendor lain — tidak ikut ditarik. Buat PO terpisah untuk vendor tersebut.`);
+            }
+            detail = mine;
+        }
+
+        // Price starts from what the requisition expected to pay, so the buyer
+        // negotiates from a number instead of from zero.
+        const lines = detail.map((l) => ({ pr_detail_id: l.id, item_id: l.item_id, qty: l.qty, uom_id: l.uom_id || '', price: Number(l.est_price) || 0, price_kg: '', tax_id: '', est_weight_unit: '', est_length_unit: '' }));
         set('lines', [...form.lines, ...lines]);
         setPullPr('');
     };
@@ -130,9 +155,10 @@ export default function PoPage() {
             <DataTable columns={columns} rows={list.data?.data || []} meta={list.data?.meta} loading={list.isLoading} onPageChange={setPage}
                 actions={(row) => (
                     <div className="flex justify-end gap-1">
-                        {row.status === 'DRAFT' && can('po', 'edit') && <button title="Approve" className="rounded p-1.5 text-emerald-600 hover:bg-emerald-50" onClick={() => act.mutate({ id: row.id, action: 'approve' })}><Icon name="check" /></button>}
+                        {row.status === 'DRAFT' && can('po', 'edit') && <button title="Submit" className="rounded p-1.5 text-amber-600 hover:bg-amber-50" onClick={() => act.mutate({ id: row.id, action: 'submit' })}><Icon name="send" /></button>}
+                        {row.status === 'SUBMITTED' && can('po', 'edit') && <button title="Approve" className="rounded p-1.5 text-emerald-600 hover:bg-emerald-50" onClick={() => act.mutate({ id: row.id, action: 'approve' })}><Icon name="check" /></button>}
                         {['OPEN', 'INPROGRESS'].includes(row.status) && can('po', 'edit') && <button title="Close" className="rounded p-1.5 text-blue-600 hover:bg-blue-50" onClick={() => window.confirm('Tutup PO ini secara manual?') && act.mutate({ id: row.id, action: 'close' })}><Icon name="lock" /></button>}
-                        {['DRAFT', 'OPEN', 'INPROGRESS'].includes(row.status) && can('po', 'edit') && <button title="Cancel" className="rounded p-1.5 text-red-600 hover:bg-red-50" onClick={() => window.confirm('Batalkan PO ini?') && act.mutate({ id: row.id, action: 'cancel' })}><Icon name="ban" /></button>}
+                        {['DRAFT', 'SUBMITTED', 'OPEN', 'INPROGRESS'].includes(row.status) && can('po', 'edit') && <button title="Cancel" className="rounded p-1.5 text-red-600 hover:bg-red-50" onClick={() => window.confirm('Batalkan PO ini?') && act.mutate({ id: row.id, action: 'cancel' })}><Icon name="ban" /></button>}
                         {row.status !== 'CANCELLED' && can('po', 'edit') && <button title="Edit" className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" onClick={() => openEdit(row)}><Icon name="pencil" /></button>}
                         {row.status === 'DRAFT' && can('po', 'delete') && <button title="Hapus" className="rounded p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" onClick={() => window.confirm('Hapus PO?') && remove.mutate(row.id)}><Icon name="trash" /></button>}
                     </div>

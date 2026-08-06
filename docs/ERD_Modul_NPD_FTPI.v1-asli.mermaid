@@ -1,0 +1,331 @@
+erDiagram
+    customers ||--o{ npd_projects : "mengajukan"
+    users ||--o{ npd_projects : "PM"
+    npd_projects ||--o{ npd_rfqs : "berasal dari"
+    npd_projects ||--o{ npd_feasibility_studies : "dievaluasi"
+    npd_phases ||--o{ npd_project_phases : "diinstansiasi"
+    npd_projects ||--o{ npd_project_phases : "melewati"
+    npd_project_phases ||--o{ npd_tasks : "berisi"
+    npd_projects ||--o{ npd_milestones : "punya"
+    npd_projects ||--o{ npd_deliverables : "menghasilkan"
+    npd_project_phases ||--o{ npd_deliverables : "per fase"
+    npd_projects ||--o{ npd_documents : "menyimpan"
+    npd_projects ||--o{ npd_boms : "punya"
+    npd_boms ||--o{ npd_bom_items : "berisi"
+    npd_projects ||--o{ npd_cost_estimates : "punya"
+    npd_projects ||--o{ npd_trials : "menjalankan"
+    npd_trials ||--o{ npd_trial_results : "mencatat"
+    npd_projects ||--o{ npd_fmeas : "punya"
+    npd_fmeas ||--o{ npd_fmea_items : "berisi"
+    npd_projects ||--o{ npd_control_plans : "punya"
+    npd_control_plans ||--o{ npd_control_plan_items : "berisi"
+    npd_projects ||--o{ npd_ppap_submissions : "mengajukan"
+    npd_ppap_submissions ||--o{ npd_ppap_elements : "terdiri dari"
+    npd_projects ||--o{ npd_approvals : "membutuhkan"
+    npd_project_phases ||--o{ npd_approvals : "gate"
+    users ||--o{ npd_approvals : "menyetujui"
+    npd_projects ||--o{ npd_change_requests : "mengalami"
+    npd_projects ||--o{ npd_project_members : "beranggotakan"
+    users ||--o{ npd_project_members : "tergabung"
+
+    customers {
+        bigint id PK
+        string customer_code
+        string name
+        string country
+        string contact_person
+        string email
+    }
+
+    users {
+        bigint id PK
+        string name
+        string email
+        string department
+        string role
+    }
+
+    npd_phases {
+        bigint id PK
+        int phase_no "1-5"
+        string phase_name
+        string description
+    }
+
+    npd_projects {
+        bigint id PK
+        string project_code UK
+        string project_name
+        bigint customer_id FK
+        string part_number
+        string drawing_no
+        string project_type "baru/modifikasi/derivatif"
+        int current_phase_no
+        string status "draft/in_progress/on_hold/approved/rejected/closed"
+        date target_sop_date
+        bigint pm_user_id FK
+        string priority
+        bigint created_by FK
+        datetime created_at
+        datetime updated_at
+    }
+
+    npd_rfqs {
+        bigint id PK
+        bigint project_id FK
+        bigint customer_id FK
+        string rfq_no
+        date received_date
+        int required_qty
+        decimal target_price
+        date due_date
+        string drawing_ref
+        string status
+    }
+
+    npd_feasibility_studies {
+        bigint id PK
+        bigint project_id FK
+        bigint evaluated_by FK
+        boolean technical_feasible
+        boolean capacity_feasible
+        boolean cost_feasible
+        string material_availability
+        string conclusion "go/no_go/conditional"
+        text notes
+        datetime evaluated_at
+    }
+
+    npd_project_phases {
+        bigint id PK
+        bigint project_id FK
+        bigint phase_id FK
+        date planned_start
+        date planned_end
+        date actual_start
+        date actual_end
+        string status "planned/in_progress/done"
+        bigint pic_user_id FK
+    }
+
+    npd_tasks {
+        bigint id PK
+        bigint project_phase_id FK
+        string task_name
+        text description
+        bigint assigned_to FK
+        date planned_start
+        date planned_end
+        date actual_start
+        date actual_end
+        int progress_pct
+        bigint predecessor_id FK
+        string status
+    }
+
+    npd_milestones {
+        bigint id PK
+        bigint project_id FK
+        string milestone_name
+        date planned_date
+        date actual_date
+        string status
+    }
+
+    npd_deliverables {
+        bigint id PK
+        bigint project_id FK
+        bigint project_phase_id FK
+        string deliverable_type "DFMEA/PFMEA/ControlPlan/MSA/dll"
+        string title
+        string status
+        bigint responsible_user_id FK
+        date due_date
+        date submitted_date
+        bigint document_id FK
+    }
+
+    npd_documents {
+        bigint id PK
+        bigint project_id FK
+        string related_type "polymorphic"
+        bigint related_id
+        string doc_type
+        string file_name
+        string file_path
+        string version
+        string revision
+        bigint uploaded_by FK
+        datetime uploaded_at
+    }
+
+    npd_boms {
+        bigint id PK
+        bigint project_id FK
+        string bom_version
+        string status
+        date effective_date
+        bigint approved_by FK
+    }
+
+    npd_bom_items {
+        bigint id PK
+        bigint bom_id FK
+        string item_code
+        string description
+        string material
+        decimal qty
+        string uom
+        decimal unit_cost
+        bigint supplier_id
+        string remark
+    }
+
+    npd_cost_estimates {
+        bigint id PK
+        bigint project_id FK
+        string version
+        decimal material_cost
+        decimal process_cost
+        decimal tooling_cost
+        decimal overhead
+        decimal margin
+        decimal total_cost
+        decimal quoted_price
+        bigint approved_by FK
+        string status
+    }
+
+    npd_trials {
+        bigint id PK
+        bigint project_id FK
+        bigint project_phase_id FK
+        string trial_no
+        string trial_type "prototype/pilot/mass_trial"
+        date trial_date
+        int planned_qty
+        int produced_qty
+        int ok_qty
+        int ng_qty
+        string machine
+        bigint operator_id FK
+        string conclusion
+        string status
+    }
+
+    npd_trial_results {
+        bigint id PK
+        bigint trial_id FK
+        string characteristic
+        decimal spec_nominal
+        decimal spec_upper
+        decimal spec_lower
+        decimal measured_value
+        string judgement "ok/ng"
+        string instrument
+        bigint inspector_id FK
+    }
+
+    npd_fmeas {
+        bigint id PK
+        bigint project_id FK
+        string fmea_type "design/process"
+        string fmea_no
+        string revision
+        string team
+        bigint prepared_by FK
+        date fmea_date
+    }
+
+    npd_fmea_items {
+        bigint id PK
+        bigint fmea_id FK
+        string item_function
+        string failure_mode
+        string effect
+        int severity
+        string cause
+        int occurrence
+        string current_control
+        int detection
+        int rpn
+        string recommended_action
+        string action_taken
+        bigint resp_user_id FK
+    }
+
+    npd_control_plans {
+        bigint id PK
+        bigint project_id FK
+        string control_plan_no
+        string revision
+        string type "prototype/pre_launch/production"
+        bigint prepared_by FK
+    }
+
+    npd_control_plan_items {
+        bigint id PK
+        bigint control_plan_id FK
+        string process_no
+        string process_name
+        string characteristic
+        string spec
+        string measurement_method
+        int sample_size
+        string frequency
+        string control_method
+        string reaction_plan
+    }
+
+    npd_ppap_submissions {
+        bigint id PK
+        bigint project_id FK
+        int ppap_level "1-5"
+        date submission_date
+        string psw_no
+        string status "submitted/interim/approved/rejected"
+        date approval_date
+        string approved_by_customer
+    }
+
+    npd_ppap_elements {
+        bigint id PK
+        bigint ppap_submission_id FK
+        int element_no "1-18"
+        string element_name
+        string status
+        bigint document_id FK
+        string remark
+    }
+
+    npd_approvals {
+        bigint id PK
+        bigint project_id FK
+        bigint project_phase_id FK
+        string approval_type "gate/document/costing"
+        int level
+        bigint approver_user_id FK
+        string status "pending/approved/rejected"
+        datetime decision_date
+        text comment
+    }
+
+    npd_change_requests {
+        bigint id PK
+        bigint project_id FK
+        string cr_no
+        text description
+        text reason
+        bigint requested_by FK
+        text impact
+        string status
+        bigint approved_by FK
+    }
+
+    npd_project_members {
+        bigint id PK
+        bigint project_id FK
+        bigint user_id FK
+        string role "PM/design/quality/production/procurement"
+        datetime assigned_at
+    }

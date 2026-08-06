@@ -10,13 +10,29 @@ class m_rate extends Model
     use HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'm_rate';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
+    public $timestamps = false;   // m_rate carries no created_at/updated_at
+
     protected $fillable = [
+        'currency_id',
         'rate_type',
-        'rate'
+        'valid_date',
+        'rate',
     ];
 
+    protected $casts = [
+        'valid_date' => 'date',
+        'rate' => 'float',
+    ];
+
+    public function currency()
+    {
+        return $this->belongsTo(m_currency::class, 'currency_id', 'id');
+    }
 }

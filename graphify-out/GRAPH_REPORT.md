@@ -1,16 +1,16 @@
-# Graph Report - ab-erp  (2026-07-24)
+# Graph Report - ab-erp  (2026-08-06)
 
 ## Corpus Check
-- 340 files · ~144,961 words
+- 641 files · ~304,845 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1896 nodes · 5111 edges · 183 communities (100 shown, 83 thin omitted)
-- Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 651 edges (avg confidence: 0.8)
+- 3616 nodes · 10278 edges · 279 communities (171 shown, 108 thin omitted)
+- Extraction: 85% EXTRACTED · 15% INFERRED · 0% AMBIGUOUS · INFERRED: 1545 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `68339dbb`
+- Built from commit: `9d51f6d2`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -54,6 +54,7 @@
 - User Model & Permissions
 - Work Order React Page
 - Process Main Routing Master
+- MES & Planning Source Files
 - Database Seeder Entrypoint
 - Item Master React Page
 - Sales Forecast
@@ -123,7 +124,6 @@
 - Process Main Detail Model
 - Quota Item Model
 - Cost Allocation Model
-- Cost Detail Model
 - PM Stock Summary Model
 - Downtime Category Model
 - FG Incoming UDF Model
@@ -144,35 +144,92 @@
 - General Store Request Detail
 - Laravel Discovery Config
 - Post Autoload Dump Script
+- sls_inv_detail
 - Document Numbering Service
+- Artisan Console Entry
 - Deployment & NFR
 - Modular Monolith Conventions
+- Cache Config
+- Queue Config
+- Sanctum Config
 - FG Transfer Spec Group
 - Multi-Vendor Sourcing
+- sub_po_detail
+- sum_stock_pm
+- tr_inc_fg_det_udf
+- MesReportController.php
+- prc_gr_serial
+- prd_cut_serial
+- tr_out_fg_det
+- wh_gen_out_main
+- autoload-dev
+- CostingService
+- FgOutgoingPage.jsx
+- prc_cost_detail
+- prc_inv_detail
+- ProcurementSeeder
+- tr_dt_pro_detail
+- WorkCalendarController
+- acc_period
+- .terms
+- FcsService
+- m_item_customer.php
+- AccountingSeeder
+- tr_cut_pal_pr.php
+- wh_inc_detail
+- AlertPage.jsx
+- prd_wo_serial_pm
+- tr_dt_pro_detail
+- .store
+- keywords
+- sub_dn_detail
+- m_machine
+- UomConversionService
+- static
+- m_shift
+- prd_wo_detail_rm
+- extra
+- m_quota_item
+- ScrapController
+- m_pal_item_det
+- npd_trial_det
+- tr_ab_cut_det
+- prc_cost_alloc
+- m_pal_item
+- sum_stock_pm
+- tr_inc_fg_det_udf
+- sub_dn_detail
+- tr_cut_detail
+- prd_wo_serial_pm
+- keywords
+- sub_po_detail
+- tr_pro_pallet.php
+- m_bom_pro_det
+- whs_out_det
 
 ## God Nodes (most connected - your core abstractions)
-1. `ApiResponse` - 244 edges
-2. `AuditLogger` - 141 edges
-3. `BizException` - 114 edges
-4. `useAuth` - 91 edges
-5. `Controller` - 85 edges
-6. `apiError()` - 85 edges
-7. `money()` - 65 edges
-8. `api` - 52 edges
-9. `Icon()` - 52 edges
-10. `useOptions()` - 46 edges
+1. `ApiResponse` - 521 edges
+2. `AuditLogger` - 282 edges
+3. `BizException` - 223 edges
+4. `Controller` - 169 edges
+5. `apiError()` - 168 edges
+6. `useAuth` - 161 edges
+7. `money()` - 131 edges
+8. `api` - 94 edges
+9. `Icon()` - 93 edges
+10. `npd_project` - 81 edges
 
 ## Surprising Connections (you probably didn't know these)
+- `kmk()` --calls--> `m_rate`  [INFERRED]
+  tests/Feature/ImportTaxTest.php → app/Models/m_rate.php
+- `menuId()` --calls--> `menus`  [INFERRED]
+  tests/Feature/UserManagementTest.php → app/Models/menus.php
 - `Graphify Knowledge-Graph Workflow` --semantically_similar_to--> `Laravel Boost (Agentic Development Tooling)`  [INFERRED] [semantically similar]
   CLAUDE.md → README.md
-- `graphify-out Artifacts (graph.json, wiki, GRAPH_REPORT)` --references--> `PRD ERP + MES Manufaktur Pipa v3.0`  [AMBIGUOUS]
-  CLAUDE.md → docs/PRD-ERP-Manufaktur-Pipa.md
-- `robots.txt Open Crawl Policy` --conceptually_related_to--> `Security Design (Sanctum, 2FA, vendor guard, period lock)`  [AMBIGUOUS]
-  public/robots.txt → docs/LLD-ERP-Manufaktur-Pipa.md
-- `Tech Stack (Laravel 11 / React 18 / MySQL 8 / Redis)` --references--> `Laravel Framework`  [INFERRED]
-  docs/PRD-ERP-Manufaktur-Pipa.md → README.md
-- `WIP Pallet Traceability (prd_wip_pallet)` --semantically_similar_to--> `Serial Number Traceability (RM 1:pcs, PM 1:lot)`  [INFERRED] [semantically similar]
-  docs/LLD-ERP-Manufaktur-Pipa.md → docs/PRD-ERP-Manufaktur-Pipa.md
+- `handoverReadyProject()` --calls--> `npd_bom_main`  [INFERRED]
+  tests/Feature/NpdHandoverTest.php → app/Models/npd_bom_main.php
+- `handoverReadyProject()` --calls--> `npd_cp_main`  [INFERRED]
+  tests/Feature/NpdHandoverTest.php → app/Models/npd_cp_main.php
 
 ## Import Cycles
 - None detected.
@@ -182,59 +239,51 @@
 - **RM Serial Lifecycle: GRN generate → putaway → WO booking → cutting consume → scrap decision** — docs_lld_erp_manufaktur_pipa_grn_serial_flow, docs_lld_erp_manufaktur_pipa_putaway_layout, docs_lld_erp_manufaktur_pipa_woallocationservice, docs_lld_erp_manufaktur_pipa_trcutservice, docs_lld_erp_manufaktur_pipa_scrapservice, docs_lld_erp_manufaktur_pipa_wh_serial_table [EXTRACTED 1.00]
 - **Indonesian Tax Compliance Cluster (PPN PMK 131/2024, Coretax e-Faktur, PPh 22/23 e-Bupot, landed cost)** — docs_prd_erp_manufaktur_pipa_ppn_pmk131, docs_prd_erp_manufaktur_pipa_coretax_efaktur, docs_prd_erp_manufaktur_pipa_pph23_ebupot, docs_prd_erp_manufaktur_pipa_landed_cost_sheet, docs_lld_erp_manufaktur_pipa_taxengine [EXTRACTED 1.00]
 
-## Communities (183 total, 83 thin omitted)
+## Communities (279 total, 108 thin omitted)
 
 ### Community 0 - "Eloquent Factory Models"
-Cohesion: 0.04
-Nodes (24): acc_ar_rec_det, acc_ar_rec_main, m_bom_pro_det, m_function_m, m_i_category, m_process_main_det, m_rate, m_region (+16 more)
+Cohesion: 0.09
+Nodes (5): EcnController, eng_ecn_main, BomToolService, EcnService, ecnFor()
 
 ### Community 1 - "Eloquent Model Base Layer"
-Cohesion: 0.04
-Nodes (22): m_cont_categ, m_defective, m_maker_m, m_p_type, m_pic, m_tax, m_uom, prc_cost_alloc (+14 more)
+Cohesion: 0.03
+Nodes (32): acc_ap_pay_det, acc_ar_rec_det, log_prc, m_cont_categ, m_defective, m_function_m, m_i_category, m_i_pm (+24 more)
 
 ### Community 2 - "Purchase Order & Goods Receipt"
-Cohesion: 0.07
-Nodes (6): GrController, PoController, RejectController, prc_gr_main, prc_gr_reject, prc_po_main
-
-### Community 3 - "Sales DO & FG Outgoing"
-Cohesion: 0.06
-Nodes (8): DoController, SoController, FgOutgoingController, sls_do_detail, sls_do_main, sls_so_main, tr_out_fg_main, LineTax
-
-### Community 4 - "FG Stock & MRP Planning"
-Cohesion: 0.08
-Nodes (5): MrpController, prd_mrp_detail, prd_mrp_main, FgStockService, PlanningService
+Cohesion: 0.18
+Nodes (3): AdjustmentController, wh_adj_main, StockAdjustmentService
 
 ### Community 5 - "React App Shell & Auth"
 Cohesion: 0.06
-Nodes (62): apiError(), App(), ProtectedRoute(), ApPaymentPage(), today(), ArReceiptPage(), today(), CoaPage() (+54 more)
-
-### Community 6 - "Shared React UI Components"
-Cohesion: 0.17
-Nodes (25): DataTable(), Icon(), MAP, Modal(), PickerModal(), EMPTY, CellInput(), LineTable() (+17 more)
+Nodes (49): App(), ProtectedRoute(), ApprovalBadge(), LEVEL_LABEL, MAP, CoaPage(), EMPTY, GROUP_STYLE (+41 more)
 
 ### Community 8 - "WMS Incoming/Outgoing API"
-Cohesion: 0.06
-Nodes (10): ApPaymentController, ArReceiptController, AbnormalController, IncomingController, OutgoingController, RemainingController, wh_out_detail, ApiResponse (+2 more)
+Cohesion: 0.04
+Nodes (15): ApPaymentController, ArReceiptController, ApprovalController, DashboardController, BomToolController, QasController, CrpController, FcsController (+7 more)
 
-### Community 10 - "Purchase Invoice & Landed Cost"
-Cohesion: 0.11
-Nodes (4): CostController, InvoiceController, prc_cost_main, prc_inv_main
+### Community 9 - "Item Master API"
+Cohesion: 0.06
+Nodes (3): ItemController, m_item, newItem()
+
+### Community 11 - "Work Order API"
+Cohesion: 0.14
+Nodes (4): DatabaseSeeder, NpdSeeder, ReplanSeeder, Illuminate\Database\Seeder
 
 ### Community 12 - "NPM Package Manifest"
-Cohesion: 0.06
-Nodes (34): axios, concurrently, laravel-vite-plugin, lucide-react, dependencies, axios, lucide-react, react (+26 more)
-
-### Community 13 - "Generic CRUD Controller"
-Cohesion: 0.11
-Nodes (4): CrudController, CategoryController, ContactCategoryController, RackController
+Cohesion: 0.05
+Nodes (42): axios, chart.js, concurrently, dexie, laravel-vite-plugin, lucide-react, dependencies, axios (+34 more)
 
 ### Community 14 - "MES Cutting & Serial Trace"
-Cohesion: 0.19
-Nodes (5): BizException, CuttingController, prd_wo_serial_rm, tr_cut_serial, RuntimeException
+Cohesion: 0.20
+Nodes (3): WorkCalendarController, m_work_calendar, WorkCalendarService
 
 ### Community 15 - "Frontend API Client & CRUD Pages"
-Cohesion: 0.60
-Nodes (4): CreateView(), FgOutgoingPage(), fmtDate(), today()
+Cohesion: 0.21
+Nodes (4): AlertController, sys_alert, AlertService, Carbon
+
+### Community 16 - "Asset Category & Cost Rate"
+Cohesion: 0.16
+Nodes (4): CuttingController, prd_wip, prd_wo_serial_rm, tr_cut_serial
 
 ### Community 17 - "Import Quota Management"
 Cohesion: 0.14
@@ -245,36 +294,44 @@ Cohesion: 0.15
 Nodes (3): SubcontController, sub_dn_main, sub_gr_main
 
 ### Community 19 - "MES Terminal Pages"
+Cohesion: 0.07
+Nodes (6): DoController, SalesInvoiceController, FgOutgoingController, sls_do_main, tr_out_fg_main, FgStockService
+
+### Community 20 - "WIP Processing & Pallets"
+Cohesion: 0.08
+Nodes (34): ChooseGrModal(), Icon(), Aging(), BalanceSheet(), BUCKETS, FinReportPage(), IncomeStatement(), Section() (+26 more)
+
+### Community 21 - "Demo Seeder Data Models"
 Cohesion: 0.15
-Nodes (21): api, ChooseGrModal(), money(), CuttingPage(), today(), MesReportPage(), thisPeriod(), KplModal() (+13 more)
+Nodes (5): AssetCategoryController, AssetController, ast_depre, ast_main, m_asset_categ
 
-### Community 23 - "Purchase Requisition"
-Cohesion: 0.23
-Nodes (3): PrController, prc_pr_main, AuditLogger
-
-### Community 24 - "MPS Master Production Schedule"
-Cohesion: 0.09
-Nodes (6): MppController, MpsController, MpsRescheduleController, prd_mpp, prd_mps, prd_mps_resched
-
-### Community 25 - "Fixed Asset & Depreciation"
-Cohesion: 0.19
-Nodes (3): AssetController, ast_depre, ast_main
+### Community 22 - "Demo Data Seeder Logic"
+Cohesion: 0.12
+Nodes (4): NpdTaskController, npd_deliverable, npd_milestone, npd_task
 
 ### Community 26 - "MPP Production Plan"
 Cohesion: 0.11
-Nodes (6): JournalController, acc_journal_det, acc_journal_main, GlPostingService, JournalEngine, self
+Nodes (20): Modal(), ELEMENT_STATUS, LEVELS, NpdPpapPage(), today(), EMPTY, RejectPage(), CuttingPage() (+12 more)
 
 ### Community 27 - "Auth, Menus & Permissions"
-Cohesion: 0.18
-Nodes (3): AuthController, menus, MenuService
+Cohesion: 0.07
+Nodes (28): 0. Apa yang berubah dari versi 1, dan mengapa, 10. Kebutuhan non-fungsional (disesuaikan), 11. Metrik keberhasilan, 12. Tahapan implementasi (disesuaikan), 13. Asumsi dan batasan, 14. Keputusan yang sudah diambil (4 Agustus 2026), 1. Ringkasan, 2. Peta penyesuaian: modul lama → AB-ERP (+20 more)
 
 ### Community 29 - "MPS Reschedule Workflow"
-Cohesion: 0.10
-Nodes (18): AssetPage(), EMPTY, ym(), CostRatePage(), EMPTY, ProcessMainPage(), RouteTimePage(), ItemSelect() (+10 more)
+Cohesion: 0.08
+Nodes (41): apiError(), BomToolsPage(), Compare(), Copy(), TABS, EcnPage(), EMPTY, SCOPE (+33 more)
 
 ### Community 31 - "Composer Manifest Metadata"
 Cohesion: 0.14
-Nodes (13): autoload-dev, psr-4, description, extra, laravel, dont-discover, license, minimum-stability (+5 more)
+Nodes (13): autoload-dev, psr-4, description, keywords, license, minimum-stability, name, prefer-stable (+5 more)
+
+### Community 32 - "FG Pricelist Master"
+Cohesion: 0.17
+Nodes (3): prc_gr_detail, SerialService, Illuminate\Database\Eloquent\Collection
+
+### Community 33 - "Contacts Master Relations"
+Cohesion: 0.12
+Nodes (5): NpdPpapController, npd_ppap_main, npd_ppap_std, NpdPpapService, ppapFor()
 
 ### Community 34 - "Composer Lifecycle Scripts"
 Cohesion: 0.13
@@ -285,24 +342,36 @@ Cohesion: 0.26
 Nodes (12): GRN Serial Flow (generate → print → actualize → confirm), NumberingService (race-safe document numbers), Optimistic Locking & Explicit Row Locks, QuotaService (reserve / actualize), ScrapService (evaluate / decide), SerialService (generateForGrLine, actualize, consume), Testing Strategy (Pest unit → Playwright E2E), WoAllocationService.book (serial booking to WO) (+4 more)
 
 ### Community 36 - "User Model & Permissions"
-Cohesion: 0.20
-Nodes (5): User, Illuminate\Database\Eloquent\Relations\HasMany, Illuminate\Foundation\Auth\User, Illuminate\Notifications\Notifiable, Laravel\Sanctum\HasApiTokens
+Cohesion: 0.10
+Nodes (9): User, MenuService, AdminUserManagementSeeder, Illuminate\Foundation\Auth\User, Illuminate\Notifications\Notifiable, Laravel\Sanctum\HasApiTokens, menuId(), staffUser() (+1 more)
 
 ### Community 37 - "Work Order React Page"
-Cohesion: 0.21
-Nodes (8): blank(), SerialModal(), num(), SerialRmModal(), STATUS, today(), uid(), WoPage()
+Cohesion: 0.07
+Nodes (32): PickerModal(), RouteTimePage(), EMPTY, ITEM_COLUMNS, PO_TYPES, EMPTY, SubcontItemPage(), addMonths() (+24 more)
+
+### Community 39 - "MES & Planning Source Files"
+Cohesion: 0.08
+Nodes (24): 1. Core Engines (LLD Bab 4) — ✅ LENGKAP, 2. Fitur PRD, 3. MES & Offline (PRD §2.1, LLD §6.2) — ✅ LENGKAP, 4. Infrastruktur & Non-Functional, 5. Testing, 6. Tax Compliance (PRD §6) — ✅ LENGKAP, 7. Arsitektur & Code Quality, 8. Prioritas Perbaikan — Rekomendasi (+16 more)
 
 ### Community 40 - "Database Seeder Entrypoint"
-Cohesion: 0.33
-Nodes (3): status_id, DatabaseSeeder, Illuminate\Database\Seeder
+Cohesion: 0.25
+Nodes (13): OfflineBar(), useOfflineSync(), db, discardFailed(), enqueue(), expire(), flush(), getSnapshot() (+5 more)
 
 ### Community 41 - "Item Master React Page"
-Cohesion: 0.20
-Nodes (7): COLUMNS, EMPTY, ItemPage(), ItemSelect(), TABS, TYPES, useOptions()
+Cohesion: 0.18
+Nodes (8): COLUMNS, EMPTY, GROUPS, ItemPage(), ItemSelect(), SHAPES, TABS, useOptions()
+
+### Community 42 - "Sales Forecast"
+Cohesion: 0.10
+Nodes (5): npd_deliverable_std, npd_feasibility, npd_phase, npd_project_phase, NpdService
 
 ### Community 44 - "Planning & Costing Engine Design"
 Cohesion: 0.22
 Nodes (11): COGM Calculation & Roll-Up per WO, CRP Loading Calculation, MRP Engine (low-level-code explosion), Queue Jobs & Scheduler (default | heavy), wh_serial / wh_serial_movement / wh_stock_sum Schema, Multi-Level BOM (FG as PM of another FG), COGM / HPP Actual Costing per WO, Domain Glossary (WOS, QAS, GRN, RFG, FCS, UMH, COGM) (+3 more)
+
+### Community 45 - "Sales Return"
+Cohesion: 0.17
+Nodes (5): CheckClientUuid, mes_oplog, MesSyncService, syncReq(), Throwable
 
 ### Community 51 - "Dev Dependencies"
 Cohesion: 0.22
@@ -316,9 +385,13 @@ Nodes (16): FCS → RFG Receiving Flow, client_uuid Idempotency Key, Item–Cust
 Cohesion: 0.40
 Nodes (5): UomConversionService, Dual UoM for Pipe RM (length mm + weight kg), FG Downgrade (NG finished good back to material), Scrap RM Candidate Rule (remaining < min BOM length), Serial Number Traceability (RM 1:pcs, PM 1:lot)
 
-### Community 55 - "Sales Order React Page"
+### Community 54 - "React Error Boundary"
 Cohesion: 0.24
-Nodes (6): calcLine(), EMPTY, NEW_LINE, r2(), Row(), SoPage()
+Nodes (3): ErrorBoundary, queryClient, registerServiceWorker()
+
+### Community 55 - "Sales Order React Page"
+Cohesion: 0.10
+Nodes (5): NpdCostingController, m_pricelist_det, npd_bom_main, npd_cost_main, NpdCostingService
 
 ### Community 60 - "Project Setup Scripts"
 Cohesion: 0.25
@@ -329,12 +402,32 @@ Cohesion: 0.25
 Nodes (8): API Contract (/api/v1 and /api/mes/v1), React Frontend Design (DataTable, DocForm, ScanBox), Offline Terminal Design (service worker + IndexedDB queue), ERP + MES System Landscape (14 Modules), FTPI Visual Identity & UI/UX Direction, MES Offline Mode (PWA buffer + client_uuid idempotency), 7-Phase Implementation Roadmap, Single MySQL Database `ab-erp` for ERP and MES
 
 ### Community 62 - "Contact CRUD Controller"
-Cohesion: 0.14
-Nodes (3): FgIncomingController, tr_inc_fg_det, tr_inc_fg_main
+Cohesion: 0.10
+Nodes (4): SalesReturnController, FgIncomingController, tr_inc_fg_det, tr_inc_fg_main
 
 ### Community 64 - "Machine CRUD Controller"
-Cohesion: 0.08
-Nodes (7): CoaController, MachineController, MakerController, ProcessController, UomController, acc_coa, Illuminate\Http\Request
+Cohesion: 0.03
+Nodes (18): ReportController, TaxExportController, CrudController, CategoryController, ContactCategoryController, CurrencyController, DefectiveController, InspectionParamController (+10 more)
+
+### Community 66 - "UoM CRUD Controller"
+Cohesion: 0.18
+Nodes (3): PoScheduleController, VendorPortalController, prc_po_schedule
+
+### Community 67 - "Rack CRUD Controller"
+Cohesion: 0.14
+Nodes (13): fmtNum(), fmtPct(), KpiCard(), LowStockChart(), MiniStat(), MrpBreakdownChart(), NAV_MAP, SoFulfillmentChart() (+5 more)
+
+### Community 69 - "Rack Master Relations"
+Cohesion: 0.12
+Nodes (7): BizException, NpdDocController, AbnormalController, npd_doc, whs_tool_unit, WhsPostingService, RuntimeException
+
+### Community 70 - "GR Detail Model"
+Cohesion: 0.14
+Nodes (3): MenuController, menus, user_menu_permissions
+
+### Community 73 - "Downtime Cutting Model"
+Cohesion: 0.10
+Nodes (5): NpdQualityController, npd_cp_main, npd_fmea_main, NpdQualityService, fmeaFor()
 
 ### Community 74 - "Project Docs & Tech Stack"
 Cohesion: 0.29
@@ -344,17 +437,41 @@ Nodes (7): graphify-out Artifacts (graph.json, wiki, GRAPH_REPORT), Graphify Kno
 Cohesion: 0.29
 Nodes (7): pestphp/pest-plugin, php-http/discovery, config, allow-plugins, optimize-autoloader, preferred-install, sort-packages
 
+### Community 76 - "MPP React Page"
+Cohesion: 0.07
+Nodes (28): 10. Model Data (ERD), 11. Metrik Keberhasilan (KPI), 12. Asumsi dan Batasan, 13. Saran Tahap Implementasi, 1. Ringkasan, 2. Latar Belakang dan Tujuan, 3. Ruang Lingkup, 4. Referensi Standar (+20 more)
+
+### Community 77 - "Category CRUD Controller"
+Cohesion: 0.14
+Nodes (4): NpdTrialController, npd_trial_main, NpdTrialService, npdTrial()
+
 ### Community 78 - "Permission Middleware"
-Cohesion: 0.47
-Nodes (3): CheckPermission, Closure, Symfony\Component\HttpFoundation\Response
+Cohesion: 0.14
+Nodes (8): PeriodController, CheckPermission, EnsurePeriodOpen, EnsureVendor, VendorAuth, acc_period, Closure, Symfony\Component\HttpFoundation\Response
 
-### Community 84 - "User Factory"
-Cohesion: 0.47
-Nodes (3): UserFactory, Illuminate\Database\Eloquent\Factories\Factory, static
+### Community 79 - "Cutting Detail Model"
+Cohesion: 0.07
+Nodes (6): GrController, PoController, RejectController, prc_gr_main, prc_gr_reject, prc_po_main
 
-### Community 86 - "Abnormal Decision API"
-Cohesion: 0.33
-Nodes (6): Subcont Flow (PO Subcont → DN → Receipt → AP), TaxEngine (calcVat), e-Faktur / Coretax Integration, PPh 23 Subcont & e-Bupot, PPN under PMK 131/2024 (DPP Nilai Lain 11/12), Subcontractor Portal & Virtual Location
+### Community 85 - "Warehouse Serial Schema Design"
+Cohesion: 0.18
+Nodes (14): Illuminate\Foundation\Testing\TestCase, alertProject(), npdBom(), npdCost(), npdProject(), handoverReadyProject(), ppapProject(), qualityProject() (+6 more)
+
+### Community 89 - "PR Detail Model"
+Cohesion: 0.20
+Nodes (3): prd_scrap_decision, ScrapService, scrapFixture()
+
+### Community 93 - "Stock Check Model"
+Cohesion: 0.16
+Nodes (8): approvals(), approvedStatus(), isFullyApproved(), onFullyApproved(), onRejected(), pendingApprovals(), rejectedStatus(), Illuminate\Database\Eloquent\Relations\HasMany
+
+### Community 95 - "Processing Pallet Model"
+Cohesion: 0.25
+Nodes (7): background_color, display, icons, name, short_name, start_url, theme_color
+
+### Community 96 - "Remnant Detail Model"
+Cohesion: 0.09
+Nodes (4): CogmController, MachineController, GenerateCogmJob, cst_cogm
 
 ### Community 97 - "PSR-4 Autoload Map"
 Cohesion: 0.40
@@ -364,9 +481,21 @@ Nodes (5): autoload, psr-4, App\\, Database\\Factories\\, Database\\Seeders\\
 Cohesion: 0.40
 Nodes (5): require, laravel/framework, laravel/sanctum, laravel/tinker, php
 
+### Community 99 - "Pest Test Bootstrap"
+Cohesion: 0.08
+Nodes (30): EMPTY_CONTROL, EMPTY_RISK, NpdQualityPage(), rpnClass(), today(), CellInput(), STATUS_LABEL, STATUS_STYLE (+22 more)
+
+### Community 101 - "BOM PM Detail Model"
+Cohesion: 0.16
+Nodes (3): prd_mrp_detail, ErrorCodes, MrpService
+
 ### Community 106 - "Process Main Detail Model"
-Cohesion: 0.70
-Nodes (4): emptyLine(), JournalPage(), today(), ym()
+Cohesion: 0.11
+Nodes (30): addMonths(), currentPeriod(), formatPeriod(), MonthPicker(), MonthRangePicker(), periodRange(), toInput(), toPeriod() (+22 more)
+
+### Community 112 - "FG Incoming UDF Model"
+Cohesion: 0.13
+Nodes (3): m_bom_det_pm, m_bom_det_rm, m_bom
 
 ### Community 114 - "Approval & Status Workflow"
 Cohesion: 0.50
@@ -376,17 +505,73 @@ Nodes (4): ApprovalEngine, Standard Status Workflow & State Machine, Paperless M
 Cohesion: 0.50
 Nodes (4): Audit Trail & Structured Logging, Security Design (Sanctum, 2FA, vendor guard, period lock), Granular RBAC, Menu/User Privilege & TOTP 2FA, robots.txt Open Crawl Policy
 
-### Community 116 - "MRP React Page"
-Cohesion: 0.83
-Nodes (3): MrpPage(), nextPeriods(), ym()
+### Community 120 - "Item PM Mapping Model"
+Cohesion: 0.20
+Nodes (3): ExchangeRateController, m_rate, KursService
+
+### Community 121 - "Item Customer Mapping"
+Cohesion: 0.12
+Nodes (7): CoaController, AuthController, MesSyncController, MppController, acc_coa, prd_mpp, AuditLogger
 
 ### Community 122 - "PO Schedule Model"
 Cohesion: 0.50
 Nodes (4): post-create-project-cmd, @php artisan key:generate --ansi, @php artisan migrate --graceful --ansi, @php -r \"file_exists('database/database.sqlite') || touch('database/database.sqlite');\
 
-### Community 129 - "Post Autoload Dump Script"
+### Community 123 - "Incoming QC Model"
+Cohesion: 0.27
+Nodes (4): m_whs_item, whsIssue(), whsItem(), whsReceive()
+
+### Community 126 - "General Store Out Detail"
+Cohesion: 0.12
+Nodes (13): TYPE_LABEL, TYPE_STYLE, TypeBadge(), useWhsItems(), WHS_TYPES, WhsItemSelect(), EMPTY, WhsIncomingPage() (+5 more)
+
+### Community 127 - "General Store Request Detail"
+Cohesion: 0.03
+Nodes (29): acc_ap_pay_main, eng_ecn_det, m_bom_pro_det, m_fg_downgrade_map, m_inspection_param, m_item_inspection, m_pic, m_product_family (+21 more)
+
+### Community 160 - "sls_inv_detail"
+Cohesion: 0.14
+Nodes (4): acc_journal_det, GlPostingService, JournalEngine, self
+
+### Community 161 - "Document Numbering Service"
+Cohesion: 0.21
+Nodes (4): KanbanController, prd_kanban, MaterialIssueService, NumberingService
+
+### Community 166 - "Cache Config"
+Cohesion: 0.08
+Nodes (7): QuotationController, m_supplier_item, prc_contract_main, prc_quot_det, prc_quot_main, VendorQuotationService, quotFor()
+
+### Community 189 - "prc_gr_serial"
+Cohesion: 0.08
+Nodes (7): prc_gr_serial, qc_incoming_det, qc_incoming_main, sls_inv_main, QasService, TaxExportService, Illuminate\Support\Collection
+
+### Community 190 - "prd_cut_serial"
+Cohesion: 0.33
+Nodes (6): Subcont Flow (PO Subcont → DN → Receipt → AP), TaxEngine (calcVat), e-Faktur / Coretax Integration, PPh 23 Subcont & e-Bupot, PPN under PMK 131/2024 (DPP Nilai Lain 11/12), Subcontractor Portal & Virtual Location
+
+### Community 192 - "tr_out_fg_det"
+Cohesion: 0.32
+Nodes (3): UserFactory, Illuminate\Database\Eloquent\Factories\Factory, static
+
+### Community 199 - "prc_inv_detail"
+Cohesion: 0.15
+Nodes (8): ContractExpiryJob, MinStockAlertJob, NpdAlertJob, QuotaAlertJob, RunCrpJob, RunMrpJob, Illuminate\Contracts\Queue\ShouldQueue, Illuminate\Foundation\Queue\Queueable
+
+### Community 234 - "prd_wo_serial_pm"
+Cohesion: 0.08
+Nodes (27): api, DataTable(), DynamicForm(), ApPaymentPage(), today(), ArReceiptPage(), today(), EMPTY_PERMS (+19 more)
+
+### Community 236 - ".store"
+Cohesion: 0.29
+Nodes (3): ImportTaxService, costSheet(), kmk()
+
+### Community 266 - "keywords"
+Cohesion: 0.09
+Nodes (3): Carbon\Carbon, Illuminate\Support\Carbon, mrpFixture()
+
+### Community 269 - "tr_pro_pallet.php"
 Cohesion: 0.67
-Nodes (3): keywords, framework, laravel
+Nodes (3): extra, laravel, dont-discover
 
 ## Ambiguous Edges - Review These
 - `graphify-out Artifacts (graph.json, wiki, GRAPH_REPORT)` → `PRD ERP + MES Manufaktur Pipa v3.0`  [AMBIGUOUS]
@@ -395,9 +580,9 @@ Nodes (3): keywords, framework, laravel
   public/robots.txt · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **124 isolated node(s):** `$schema`, `name`, `type`, `description`, `laravel` (+119 more)
+- **246 isolated node(s):** `$schema`, `name`, `type`, `description`, `laravel` (+241 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **83 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **108 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -406,13 +591,13 @@ _Questions this graph is uniquely positioned to answer:_
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
 - **What is the exact relationship between `robots.txt Open Crawl Policy` and `Security Design (Sanctum, 2FA, vendor guard, period lock)`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **Why does `ApiResponse` connect `WMS Incoming/Outgoing API` to `Purchase Order & Goods Receipt`, `Sales DO & FG Outgoing`, `FG Stock & MRP Planning`, `API Core Services & Routing`, `Item Master API`, `Purchase Invoice & Landed Cost`, `Work Order API`, `Generic CRUD Controller`, `MES Cutting & Serial Trace`, `Asset Category & Cost Rate`, `Import Quota Management`, `Subcontract DN & GR`, `WIP Processing & Pallets`, `Demo Seeder Data Models`, `Purchase Requisition`, `MPS Master Production Schedule`, `Fixed Asset & Depreciation`, `MPP Production Plan`, `Auth, Menus & Permissions`, `Route Time Master`, `FG Pricelist Master`, `Process Main Routing Master`, `Sales Forecast`, `Sales Return`, `Contact CRUD Controller`, `Machine CRUD Controller`, `Process CRUD Controller`, `UoM CRUD Controller`, `Rack CRUD Controller`, `RM Stock Query API`, `MPP React Page`?**
-  _High betweenness centrality (0.045) - this node is a cross-community bridge._
-- **Why does `m_item` connect `Item Master API` to `Eloquent Factory Models`, `Eloquent Model Base Layer`, `API Core Services & Routing`, `Work Order API`, `Demo Seeder Data Models`?**
-  _High betweenness centrality (0.027) - this node is a cross-community bridge._
-- **Why does `User` connect `User Model & Permissions` to `Eloquent Model Base Layer`, `API Core Services & Routing`, `Database Seeder Entrypoint`, `Demo Seeder Data Models`, `Demo Data Seeder Logic`, `Auth, Menus & Permissions`?**
+- **Why does `ApiResponse` connect `WMS Incoming/Outgoing API` to `Eloquent Factory Models`, `Post Autoload Dump Script`, `Purchase Order & Goods Receipt`, `FG Stock & MRP Planning`, `API Core Services & Routing`, `Item Master API`, `Purchase Invoice & Landed Cost`, `Generic CRUD Controller`, `MES Cutting & Serial Trace`, `Frontend API Client & CRUD Pages`, `Asset Category & Cost Rate`, `Import Quota Management`, `Subcontract DN & GR`, `MES Terminal Pages`, `Demo Seeder Data Models`, `Demo Data Seeder Logic`, `Purchase Requisition`, `MPS Master Production Schedule`, `Fixed Asset & Depreciation`, `Route Time Master`, `Contacts Master Relations`, `Artisan Console Entry`, `Document Numbering Service`, `Process Main Routing Master`, `Cache Config`, `Queue Config`, `Sanctum Config`, `Sales Return`, `Machine Master Relations`, `Sales Order React Page`, `sum_stock_pm`, `COGM Costing Service`, `MesReportController.php`, `prc_gr_serial`, `Contact CRUD Controller`, `Currency CRUD Controller`, `Machine CRUD Controller`, `Process CRUD Controller`, `UoM CRUD Controller`, `RM Stock Query API`, `Rack Master Relations`, `GR Detail Model`, `prc_inv_detail`, `ProcurementSeeder`, `Downtime Cutting Model`, `Category CRUD Controller`, `Permission Middleware`, `Cutting Detail Model`, `Warehouse Remnant Model`, `User Factory`, `Abnormal Decision API`, `BOM Process Model`, `WO Detail PM Model`, `WO Detail RM Model`, `WorkCalendarController`, `RM Stock Summary Model`, `Remnant Detail Model`, `AccountingSeeder`, `BOM Process Detail Model`, `Pallet Item Model`, `Pallet Master Model`, `Quota Item Model`, `Cost Allocation Model`, `Downtime Category Model`, `MRP React Page`, `AR Receipt Model`, `Item PM Mapping Model`, `Item Customer Mapping`, `Cutting Pallet Process Model`?**
+  _High betweenness centrality (0.062) - this node is a cross-community bridge._
+- **Why does `User` connect `User Model & Permissions` to `PR Detail Model`, `Eloquent Model Base Layer`, `Artisan Console Entry`, `Document Numbering Service`, `Purchase Order & Goods Receipt`, `GR Detail Model`, `API Core Services & Routing`, `Pallet Item Detail Model`, `AlertPage.jsx`, `Cost Detail Model`, `Warehouse Serial Schema Design`, `AR Receipt Model`, `Item Customer Mapping`, `Sales Invoice Model`, `Downtime Cutting Detail`?**
+  _High betweenness centrality (0.034) - this node is a cross-community bridge._
+- **Why does `BizException` connect `Rack Master Relations` to `Eloquent Factory Models`, `Post Autoload Dump Script`, `Purchase Order & Goods Receipt`, `Sales DO & FG Outgoing`, `API Core Services & Routing`, `WMS Incoming/Outgoing API`, `Item Master API`, `Purchase Invoice & Landed Cost`, `Generic CRUD Controller`, `Asset Category & Cost Rate`, `Subcontract DN & GR`, `MES Terminal Pages`, `Demo Seeder Data Models`, `Demo Data Seeder Logic`, `Purchase Requisition`, `MPS Master Production Schedule`, `Route Time Master`, `sls_inv_detail`, `Contacts Master Relations`, `Artisan Console Entry`, `Document Numbering Service`, `FG Pricelist Master`, `Process Main Routing Master`, `Cache Config`, `Sales Forecast`, `Sanctum Config`, `Machine Master Relations`, `Sales Order React Page`, `COGM Costing Service`, `MesReportController.php`, `prc_gr_serial`, `Contact CRUD Controller`, `Currency CRUD Controller`, `Process CRUD Controller`, `UoM CRUD Controller`, `GR Detail Model`, `Downtime Cutting Model`, `Category CRUD Controller`, `Permission Middleware`, `Cutting Detail Model`, `Warehouse Remnant Model`, `Abnormal Decision API`, `BOM Process Model`, `PR Detail Model`, `WorkCalendarController`, `WO Detail RM Model`, `WO Detail PM Model`, `RM Stock Summary Model`, `BOM PM Detail Model`, `BOM Process Detail Model`, `Quota Item Model`, `Cost Allocation Model`, `Downtime Category Model`, `FG Incoming UDF Model`, `MRP React Page`, `AP Payment Model`, `AR Receipt Model`, `Item PM Mapping Model`, `Item Customer Mapping`, `Cutting Pallet Process Model`?**
   _High betweenness centrality (0.026) - this node is a cross-community bridge._
-- **Are the 239 inferred relationships involving `ApiResponse` (e.g. with `.index()` and `.openInvoices()`) actually correct?**
-  _`ApiResponse` has 239 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 139 inferred relationships involving `AuditLogger` (e.g. with `.store()` and `.store()`) actually correct?**
-  _`AuditLogger` has 139 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 512 inferred relationships involving `ApiResponse` (e.g. with `.index()` and `.openInvoices()`) actually correct?**
+  _`ApiResponse` has 512 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 280 inferred relationships involving `AuditLogger` (e.g. with `.store()` and `.store()`) actually correct?**
+  _`AuditLogger` has 280 INFERRED edges - model-reasoned connections that need verification._

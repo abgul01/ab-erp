@@ -2,16 +2,21 @@
 
 namespace App\Models;
 
+use App\Support\HasApproval;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class prd_mps extends Model
 {
+    use HasApproval;
     use HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'prd_mps';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [

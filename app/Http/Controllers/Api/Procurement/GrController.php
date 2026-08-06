@@ -10,6 +10,8 @@ use App\Support\ApiResponse;
 use App\Support\AuditLogger;
 use App\Support\NumberingService;
 use App\Support\QuotaService;
+use App\Support\SerialService;
+use App\Support\UomConversionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -168,6 +170,8 @@ class GrController extends Controller
     /** Create detail+serials per line's PO, bump qty_received, book quota, sync statuses. */
     private function applyReceipt(prc_gr_main $gr, $pos, array $lines, ?int $userId): void
     {
+        $serialSvc = app(SerialService::class);
+        $uom = app(UomConversionService::class);
         $tonByQuota = [];
 
         foreach ($lines as $line) {
@@ -177,13 +181,12 @@ class GrController extends Controller
             $serials = $line['serials'] ?? [];
             $qty = array_sum(array_map(fn ($s) => (int) $s['qty'], $serials));
             $wTotal = array_sum(array_map(fn ($s) => (float) ($s['weight'] ?? 0), $serials));
-            $unitW = $qty > 0 ? round($wTotal / $qty, 2) : null;
-            $quotaId = $line['quota_id'] ?? ($quotaControlled ? $po->quota_id : null);
+            $unitW = $uom->unitWeight($wTotal, $qty);
 
             $det = $gr->detail()->create([
                 'po_id' => $po->id,
                 'item_id' => $line['item_id'],
-                'quota_id' => $quotaId,
+                'quota_id' => $line['quota_id'] ?? ($quotaControlled ? $po->quota_id : null),
                 'hs_code' => $line['hs_code'] ?? ($quotaControlled ? optional($po->quota)->hs_code : null),
                 'qty' => $qty,
                 'length' => $line['length'] ?? ($serials[0]['length'] ?? null),
@@ -192,27 +195,17 @@ class GrController extends Controller
                 'note' => $line['note'] ?? null,
             ]);
 
-            foreach ($serials as $s) {
-                $det->serials()->create([
-                    'serial_id' => $s['serial_id'],
-                    'millsheet' => $s['millsheet'] ?? '-',
-                    'qty' => $s['qty'],
-                    'length' => $s['length'] ?? 0,
-                    'weight' => $s['weight'] ?? 0,
-                    'status' => $s['status'] ?? 'OK',
-                    'ng_reason' => $s['ng_reason'] ?? null,
-                ]);
-            }
+            $serialSvc->generateForGrLine($det, $serials);
 
             self::bumpReceived($po, (int) $line['item_id'], $qty);
             if ($quotaControlled && $wTotal > 0) {
-                $tonByQuota[$po->quota_id] = ($tonByQuota[$po->quota_id] ?? 0) + $wTotal / 1000;
+                $tonByQuota[$po->quota_id] = ($tonByQuota[$po->quota_id] ?? 0) + $uom->kgToTon($wTotal);
             }
         }
 
-        $svc = new QuotaService;
+        $qSvc = new QuotaService;
         foreach ($tonByQuota as $quotaId => $ton) {
-            $svc->bookActual($quotaId, $gr->id, round($ton, 3), $userId);
+            $qSvc->bookActual($quotaId, $gr->id, round($ton, 3), $userId);
         }
         foreach ($pos as $po) {
             PoController::syncReceivingStatus($po, $userId);

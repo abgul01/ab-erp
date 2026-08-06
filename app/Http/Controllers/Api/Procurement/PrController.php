@@ -6,6 +6,7 @@ use App\Exceptions\BizException;
 use App\Http\Controllers\Controller;
 use App\Models\prc_pr_main;
 use App\Support\ApiResponse;
+use App\Support\ApprovalEngine;
 use App\Support\AuditLogger;
 use App\Support\NumberingService;
 use Illuminate\Http\Request;
@@ -17,7 +18,8 @@ use Illuminate\Support\Facades\DB;
  */
 class PrController extends Controller
 {
-    private array $with = ['user', 'detail.item', 'detail.uom'];
+    private array $with = ['user', 'detail.item', 'detail.uom', 'detail.ven'];
+
     private const TYPES = ['MANUAL', 'MRP', 'ADDITIONAL', 'NON_RM', 'NPD'];
 
     public function index(Request $request)
@@ -101,7 +103,7 @@ class PrController extends Controller
         if ($pr->detail()->count() === 0) {
             throw BizException::make('PR_EMPTY', 'PR tanpa baris item tidak dapat disubmit.');
         }
-        $pr->update(['status' => 'SUBMITTED']);
+        $pr->submitForApproval();
         AuditLogger::record($request, "Submit PR {$pr->code}", $pr->code);
 
         return ApiResponse::item($pr->load($this->with));
@@ -109,24 +111,24 @@ class PrController extends Controller
 
     public function approve(Request $request, int $id)
     {
-        return $this->transition($request, $id, 'SUBMITTED', 'APPROVED', 'Approve');
+        $pr = prc_pr_main::findOrFail($id);
+        if ($pr->status !== 'SUBMITTED') {
+            throw BizException::make('PR_BAD_STATE', 'PR harus berstatus SUBMITTED untuk di-approve.');
+        }
+        $engine = app(ApprovalEngine::class);
+        $engine->approve($pr, $request->user(), $request->input('note'));
+
+        return ApiResponse::item($pr->fresh()->load($this->with));
     }
 
     public function reject(Request $request, int $id)
     {
-        return $this->transition($request, $id, 'SUBMITTED', 'REJECTED', 'Reject');
-    }
-
-    private function transition(Request $request, int $id, string $from, string $to, string $verb)
-    {
         $pr = prc_pr_main::findOrFail($id);
-        if ($pr->status !== $from) {
-            throw BizException::make('PR_BAD_STATE', "PR harus berstatus {$from} untuk {$verb}.");
-        }
-        $pr->update(['status' => $to]);
-        AuditLogger::record($request, "{$verb} PR {$pr->code}", $pr->code);
+        $request->validate(['note' => 'required|string|max:300']);
+        $engine = app(ApprovalEngine::class);
+        $engine->reject($pr, $request->user(), $request->input('note'));
 
-        return ApiResponse::item($pr->load($this->with));
+        return ApiResponse::item($pr->fresh()->load($this->with));
     }
 
     private function assertDraft(prc_pr_main $pr): void
@@ -139,8 +141,18 @@ class PrController extends Controller
     private function syncLines(prc_pr_main $pr, array $lines): void
     {
         foreach ($lines as $l) {
+            /*
+             * The supplier and the price it is expected to cost travel with the
+             * line. MRP fills them from the supplier master; a buyer raising a
+             * requisition by hand may know them too. Dropping them here — as
+             * this did — meant a requisition that named a vendor lost it the
+             * first time anyone edited the PR, and the buyer had to rediscover
+             * both when turning it into a purchase order.
+             */
             $pr->detail()->create([
                 'item_id' => $l['item_id'],
+                'ven_id' => $l['ven_id'] ?? null,
+                'est_price' => $l['est_price'] ?? 0,
                 'qty' => $l['qty'],
                 'uom_id' => $l['uom_id'] ?? null,
                 'need_date' => $l['need_date'] ?? null,
@@ -154,10 +166,12 @@ class PrController extends Controller
     {
         return $request->validate([
             'date' => ['required', 'date'],
-            'pr_type' => ['required', 'in:' . implode(',', self::TYPES)],
+            'pr_type' => ['required', 'in:'.implode(',', self::TYPES)],
             'lines' => ['array'],
             'lines.*.item_id' => ['required', 'integer', 'exists:m_item,id'],
             'lines.*.qty' => ['required', 'integer', 'min:1'],
+            'lines.*.ven_id' => ['nullable', 'integer', 'exists:m_contacts,id'],
+            'lines.*.est_price' => ['nullable', 'numeric', 'min:0'],
             'lines.*.uom_id' => ['nullable', 'integer', 'exists:m_uom,id'],
             'lines.*.need_date' => ['nullable', 'date'],
             'lines.*.note' => ['nullable', 'string', 'max:150'],

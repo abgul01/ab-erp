@@ -10,8 +10,11 @@ class prc_inv_main extends Model
     use HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'prc_inv_main';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [
@@ -23,6 +26,8 @@ class prc_inv_main extends Model
         'dpp',
         'vat',
         'wht23',
+        'wht23_code',
+        'wht23_rate',
         'total',
         'tax_inv_no',
         'tax_inv_date',

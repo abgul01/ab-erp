@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -27,7 +28,7 @@ class FgStockService
      * Finished pallets waiting to be received into the FG warehouse, from both
      * processing and cut-only routings. One row per pallet, carrying its lot.
      *
-     * @return \Illuminate\Support\Collection<int, object>
+     * @return Collection<int, object>
      */
     public function availablePallets(?int $itemId = null)
     {
@@ -90,7 +91,7 @@ class FgStockService
      * FG lots on hand for an item (or all), oldest first (FIFO): each received
      * batch with its remaining qty after issues. Used for lot selection on the DO.
      *
-     * @return \Illuminate\Support\Collection<int, object>
+     * @return Collection<int, object>
      */
     public function availableLots(?int $itemId = null)
     {
@@ -107,10 +108,12 @@ class FgStockService
                 DB::raw("CONVERT(d.code USING utf8mb4) COLLATE {$coll}")
             ))
             ->when($itemId, fn ($q) => $q->where('d.item_id', $itemId))
+            ->where('d.status', 'ACTIVE')
             ->orderBy('m.date')->orderBy('d.id')
             ->get([
                 'd.id', 'd.code as lot_code', 'd.item_id', 'd.pal_pro_code', 'd.wip_id', 'd.qty',
                 'm.code as receipt_code', 'm.date',
+                'd.unit_cost', 'd.source', 'd.parent_lot_id', 'd.status',
                 DB::raw('COALESCE(o.used, 0) as used'),
             ]);
 

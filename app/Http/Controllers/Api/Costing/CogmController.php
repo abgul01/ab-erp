@@ -3,13 +3,12 @@
 namespace App\Http\Controllers\Api\Costing;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\GenerateCogmJob;
 use App\Models\cst_cogm;
 use App\Models\prd_wo_main;
 use App\Support\ApiResponse;
 use App\Support\AuditLogger;
-use App\Support\CostingService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Cost of Goods Manufactured. "Hitung" computes standard COGM for every Work
@@ -35,29 +34,38 @@ class CogmController extends Controller
         return ApiResponse::item(['period' => $period, 'rows' => $rows]);
     }
 
+    /**
+     * Costing every Work Order in a period grows with production volume, so it
+     * is queued rather than run inside the request. The screen polls `index`.
+     */
     public function run(Request $request)
     {
-        $data = $request->validate(['period' => ['required', 'regex:/^\d{6}$/']]);
-        $period = $data['period'];
+        $data = $request->validate([
+            'period' => ['required_without:periods', 'regex:/^\d{6}$/'],
+            'periods' => ['required_without:period', 'array', 'min:1', 'max:12'],
+            'periods.*' => ['regex:/^\d{6}$/'],
+        ]);
 
-        // WOs closed in the period (fall back to all non-cancelled if none closed)
-        $wos = prd_wo_main::whereIn('status', [2, 3])
-            ->whereRaw("DATE_FORMAT(updated_at, '%Y%m') <= ?", [$period])
-            ->get();
+        // Costing is usually re-run for a quarter after a correction, so one
+        // month and several are the same request with a different length.
+        $periods = collect($data['periods'] ?? [$data['period']])->unique()->sort()->values()->all();
 
-        $svc = new CostingService;
-        $n = DB::transaction(function () use ($wos, $period, $svc, $request) {
-            $count = 0;
-            foreach ($wos as $wo) {
-                $c = $svc->cogmForWo($wo, $period);
-                cst_cogm::updateOrCreate(['period' => $period, 'wo_id' => $wo->id], $c);
-                $count++;
-            }
-            AuditLogger::record($request, "Hitung COGM {$period}: {$count} WO");
+        $pending = prd_wo_main::whereIn('status', [2, 3])
+            ->whereRaw("DATE_FORMAT(updated_at, '%Y%m') <= ?", [end($periods)])
+            ->count();
 
-            return $count;
-        });
+        foreach ($periods as $p) {
+            GenerateCogmJob::dispatch($p, (int) $request->user()->id);
+        }
+        AuditLogger::record($request, 'Hitung COGM '.implode(', ', $periods)." (bg): {$pending} WO");
 
-        return $this->index($request);
+        return ApiResponse::item([
+            'periods' => $periods,
+            'period' => $periods[0],
+            'queued_wo' => $pending,
+            'message' => count($periods) === 1
+                ? "COGM {$periods[0]} sedang dihitung untuk {$pending} Work Order. Muat ulang beberapa saat lagi."
+                : 'COGM untuk '.count($periods)." bulan sedang dihitung ({$pending} Work Order). Muat ulang beberapa saat lagi.",
+        ]);
     }
 }

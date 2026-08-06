@@ -10,8 +10,11 @@ class m_machine extends Model
     use HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'm_machine';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [
@@ -19,6 +22,8 @@ class m_machine extends Model
         'name',
         'model',
         'categ',
+        // Lintasan produksi; kapasitas dinilai per lintasan.
+        'line_id',
         'maker_id',
         'min_d',
         'max_d',
@@ -33,7 +38,7 @@ class m_machine extends Model
         'deps_m',
         'deps_exp',
         'kwh',
-        'active'
+        'active',
     ];
 
     public function prd_cut_main()

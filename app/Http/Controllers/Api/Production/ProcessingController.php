@@ -15,6 +15,7 @@ use App\Models\tr_pro_pallet;
 use App\Support\ApiResponse;
 use App\Support\AuditLogger;
 use App\Support\PlanningService;
+use App\Support\WhsStockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -133,10 +134,10 @@ class ProcessingController extends Controller
                 $secs = $this->elapsedSec($d->start_time, $d->end_time);
 
                 return [
-                    'machine' => $d->machine ? $d->machine->code . ' — ' . $d->machine->name : '—',
+                    'machine' => $d->machine ? $d->machine->code.' — '.$d->machine->name : '—',
                     'operator' => $d->user_id,
                     'start_time' => $d->start_time, 'end_time' => $d->end_time,
-                    'duration' => $secs === null ? null : intdiv($secs, 3600) . 'h ' . intdiv($secs % 3600, 60) . 'm',
+                    'duration' => $secs === null ? null : intdiv($secs, 3600).'h '.intdiv($secs % 3600, 60).'m',
                     'downtimes' => ($downtimes[$d->id] ?? collect())->map(fn ($x) => [
                         'category' => $x->category, 'note' => $x->note,
                         'start_time' => $x->start_time, 'end_time' => $x->end_time,
@@ -277,7 +278,7 @@ class ProcessingController extends Controller
             'process' => ['id' => $procId, 'code' => $procCodes[$procId] ?? '-', 'name' => $procNames[$procId] ?? '-'],
             'sq_process' => $seq,
             'suggest_code' => substr(sprintf('%s-P%d-%03d', $wip->code, $seq, $n), 0, 20),
-            'suggest_dp' => 'OP-' . substr($wip->code, 4),
+            'suggest_dp' => 'OP-'.substr($wip->code, 4),
             'qty_half_needs' => array_sum(array_column($pallets, 'qty_half_need')),
             'qty_full_needs' => array_sum(array_column($pallets, 'qty_full_need')),
             'pallets' => $pallets,
@@ -310,7 +311,8 @@ class ProcessingController extends Controller
             $pid = (int) $s['proc_id'];
             $seq = $i + 1;
             if ($seq === 1) {
-                $trx = $cutQty; $ng = $cutNg;
+                $trx = $cutQty;
+                $ng = $cutNg;
             } else {
                 $proIds = tr_pro_main::where('wip_id', $wip->id)->where('process_id', $pid)->pluck('id');
                 $trx = (int) tr_pro_detail::whereIn('main_id', $proIds)->sum('qty_full');
@@ -318,7 +320,7 @@ class ProcessingController extends Controller
                     ->whereIn('main_id', DB::table('tr_ab_pro')->whereIn('pro_id', $proIds)->select('id'))->sum('qty');
             }
             $flow[] = [
-                'op' => 'OP' . $seq . ($seq === 1 ? ' (Cutting)' : ''),
+                'op' => 'OP'.$seq.($seq === 1 ? ' (Cutting)' : ''),
                 'process' => $procNames[$pid] ?? ($procCodes[$pid] ?? '-'),
                 'process_id' => $pid,
                 'sequence' => $seq,
@@ -330,7 +332,7 @@ class ProcessingController extends Controller
 
         return ApiResponse::item([
             'nomor_lot' => substr($wip->code, 4),
-            'qr_code' => 'OP-' . substr($wip->code, 4),
+            'qr_code' => 'OP-'.substr($wip->code, 4),
             'qty' => (int) $wo->qty,
             'nomor_barang' => $wo->fg?->code,
             'nama_barang' => $wo->fg?->part_name,
@@ -377,6 +379,7 @@ class ProcessingController extends Controller
             'subcon_code' => $data['subcon_code'] ?? null,
             'repair' => (int) ($data['repair'] ?? 0),
             'finish' => 0,
+            'client_uuid' => $request->input('client_uuid'),
         ]);
         AuditLogger::record($request, "Start processing {$main->code} (WIP {$wip->code})", $main->code);
 
@@ -465,7 +468,7 @@ class ProcessingController extends Controller
         $now = now()->format('H:i:s');
         $id = DB::table('tr_dt_pro_main')->insertGetId([
             'pro_id' => $main->id,
-            'code' => substr('DT-' . $main->code . '-' . $det->id, 0, 50),
+            'code' => substr('DT-'.$main->code.'-'.$det->id, 0, 50),
             'user_id' => $this->userCode($request),
             'machine_id' => (int) $det->machine_id,
             'det_pro_id' => $det->id,
@@ -491,11 +494,15 @@ class ProcessingController extends Controller
         if (! DB::table('tr_dt_pro_main')->where('id', $id)->exists()) {
             throw BizException::make('DT_404', 'Downtime tidak ditemukan.');
         }
+        // Sama seperti downtime cutting: serial harus milik gudang WHS, supaya
+        // riwayat penggantian sparepart per mesin bisa dipercaya.
+        $resolved = app(WhsStockService::class)->resolveCodes($data['tools'] ?? [], 'serial_tool');
+
         $now = now()->format('H:i:s');
-        DB::transaction(function () use ($data, $id, $now) {
-            foreach ($data['tools'] ?? [] as $t) {
+        DB::transaction(function () use ($resolved, $id, $now) {
+            foreach ($resolved as $t) {
                 DB::table('tr_dt_pro_detail')->insert([
-                    'main_id' => $id, 'serial_tool' => $t['serial_tool'], 'tools_id' => $t['tools_id'] ?? 0,
+                    'main_id' => $id, 'serial_tool' => $t['serial'], 'tools_id' => $t['item_id'],
                 ]);
             }
             DB::table('tr_dt_pro_main')->where('id', $id)->update(['end_time' => $now, 'updated_at' => $now]);
@@ -541,7 +548,7 @@ class ProcessingController extends Controller
                     'process_id' => (int) $main->process_id,
                     'pallet_code' => $r['pallet_code'],
                     'qty' => (int) $r['qty'],
-                    'code' => substr('AB-' . $main->code . '-' . $det->id, 0, 50),
+                    'code' => substr('AB-'.$main->code.'-'.$det->id, 0, 50),
                     'date' => now(),
                     'user_id' => $user,
                     'item_id' => (int) $main->item_id,
@@ -555,7 +562,7 @@ class ProcessingController extends Controller
 
             return $ids;
         });
-        AuditLogger::record($request, 'Abnormality processing ' . $main->code . ': ' . count($ids) . ' pallet', $main->code);
+        AuditLogger::record($request, 'Abnormality processing '.$main->code.': '.count($ids).' pallet', $main->code);
 
         return ApiResponse::item(['ids' => $ids], 201);
     }
@@ -592,7 +599,7 @@ class ProcessingController extends Controller
             throw BizException::make('PRO_MACHINE_DUP', 'Mesin ini sudah aktif pada transaksi ini.');
         }
         if (tr_pro_detail::where('main_id', $main->id)->count() >= self::MAX_MACHINE) {
-            throw BizException::make('PRO_MACHINE_MAX', 'Maksimal ' . self::MAX_MACHINE . ' mesin per transaksi processing.');
+            throw BizException::make('PRO_MACHINE_MAX', 'Maksimal '.self::MAX_MACHINE.' mesin per transaksi processing.');
         }
         tr_pro_detail::create([
             'main_id' => $main->id, 'machine_id' => $machineId,

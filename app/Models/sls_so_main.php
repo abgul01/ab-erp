@@ -2,16 +2,20 @@
 
 namespace App\Models;
 
+use App\Support\HasApproval;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class sls_so_main extends Model
 {
-    use HasFactory;
+    use HasApproval, HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'sls_so_main';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [

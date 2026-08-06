@@ -8,6 +8,51 @@
  *   optionsFrom: { resource, valueKey, labelKey } → async select populated from another endpoint
  */
 export const RESOURCES = {
+    /**
+     * Keluarga produk: pengelompokan komersial beberapa part sejenis.
+     * Dipakai laporan margin untuk menjawab "keluarga ini untung atau tidak".
+     */
+    'product-families': {
+        key: 'product-families',
+        title: 'Product Family',
+        singular: 'Keluarga Produk',
+        columns: [
+            { key: 'code', label: 'Kode' },
+            { key: 'name', label: 'Nama' },
+            { key: 'descrip', label: 'Keterangan' },
+            { key: 'active', label: 'Aktif', render: (v) => (v ? 'Ya' : 'Tidak') },
+        ],
+        fields: [
+            { name: 'code', label: 'Kode', type: 'text', required: true },
+            { name: 'name', label: 'Nama', type: 'text', required: true },
+            { name: 'descrip', label: 'Keterangan', type: 'text' },
+            { name: 'active', label: 'Aktif', type: 'checkbox', default: true },
+        ],
+    },
+
+    /**
+     * Lintasan produksi: sekumpulan mesin yang kapasitasnya dinilai bersama.
+     * CRP memakainya untuk beban per lintasan, bukan hanya per mesin.
+     */
+    'production-lines': {
+        key: 'production-lines',
+        title: 'Production Line',
+        singular: 'Lintasan Produksi',
+        columns: [
+            { key: 'code', label: 'Kode' },
+            { key: 'name', label: 'Nama' },
+            { key: 'daily_hours', label: 'Jam/hari' },
+            { key: 'active', label: 'Aktif', render: (v) => (v ? 'Ya' : 'Tidak') },
+        ],
+        fields: [
+            { name: 'code', label: 'Kode', type: 'text', required: true },
+            { name: 'name', label: 'Nama', type: 'text', required: true },
+            { name: 'descrip', label: 'Keterangan', type: 'text' },
+            { name: 'daily_hours', label: 'Jam kerja per hari', type: 'number', step: '0.5', default: 16 },
+            { name: 'active', label: 'Aktif', type: 'checkbox', default: true },
+        ],
+    },
+
     categories: {
         key: 'categories',
         title: 'Item Category',
@@ -48,6 +93,138 @@ export const RESOURCES = {
             { name: 'code', label: 'Kode (3 huruf)', type: 'text', required: true },
             { name: 'name', label: 'Nama', type: 'text', required: true },
             { name: 'is_base', label: 'Mata Uang Dasar', type: 'checkbox' },
+        ],
+    },
+    'supplier-items': {
+        key: 'supplier-items',
+        title: 'Supplier Item & Price',
+        singular: 'Harga Supplier',
+        // MRP reads the lowest-priority row to decide the order quantity and
+        // when the buyer has to act, so these numbers drive purchasing.
+        columns: [
+            { key: 'vendor', label: 'Supplier', render: (v) => v?.company_n || '—' },
+            { key: 'item', label: 'Material', render: (v) => (v ? `${v.code} — ${v.part_name}` : '—') },
+            { key: 'priority', label: 'Prioritas' },
+            { key: 'price', label: 'Harga', render: (v) => Number(v || 0).toLocaleString('id-ID') },
+            { key: 'moq', label: 'MOQ' },
+            { key: 'order_lot', label: 'Kelipatan' },
+            { key: 'lead_time_days', label: 'Lead (hari)' },
+            { key: 'active', label: 'Aktif', render: (v) => (v ? 'Ya' : 'Tidak') },
+        ],
+        fields: [
+            { name: 'ven_id', label: 'Supplier', type: 'select', required: true,
+              optionsFrom: { resource: 'contacts', valueKey: 'id', labelKey: 'company_n' } },
+            { name: 'item_id', label: 'Material', type: 'select', required: true,
+              optionsFrom: { resource: 'items', valueKey: 'id', labelKey: 'code' } },
+            { name: 'priority', label: 'Prioritas (1 = utama)', type: 'number', default: 1 },
+            { name: 'price', label: 'Harga per pcs', type: 'number', step: '0.01' },
+            { name: 'currency_id', label: 'Mata Uang', type: 'select',
+              optionsFrom: { resource: 'currencies', valueKey: 'id', labelKey: 'code' } },
+            { name: 'moq', label: 'MOQ (0 = bebas)', type: 'number' },
+            { name: 'order_lot', label: 'Kelipatan pemesanan (0 = bebas)', type: 'number' },
+            { name: 'lead_time_days', label: 'Lead time (hari)', type: 'number' },
+            { name: 'supplier_part_no', label: 'Part No Supplier', type: 'text' },
+            { name: 'valid_from', label: 'Berlaku Dari', type: 'text' },
+            { name: 'valid_to', label: 'Berlaku Sampai', type: 'text' },
+            { name: 'active', label: 'Aktif', type: 'checkbox', default: true },
+        ],
+    },
+    'whs-items': {
+        key: 'whs-items',
+        title: 'Master Barang WHS',
+        singular: 'Barang WHS',
+        // Master gudang non-material: sparepart, barang habis pakai, dan alat.
+        // Terpisah dari item produksi karena tidak punya BOM, routing, atau MRP.
+        columns: [
+            { key: 'code', label: 'Kode' },
+            { key: 'name', label: 'Nama' },
+            { key: 'whs_type', label: 'Jenis' },
+            { key: 'categ', label: 'Kategori' },
+            { key: 'brand', label: 'Merek' },
+            { key: 'rack_loc', label: 'Lokasi' },
+            { key: 'min_stock', label: 'Min. Stok' },
+            { key: 'standard_cost', label: 'Harga Acuan', render: (v) => Number(v || 0).toLocaleString('id-ID') },
+            { key: 'active', label: 'Aktif', render: (v) => (v ? 'Ya' : 'Tidak') },
+        ],
+        fields: [
+            { name: 'code', label: 'Kode', type: 'text', required: true },
+            { name: 'name', label: 'Nama Barang', type: 'text', required: true },
+            { name: 'whs_type', label: 'Jenis', type: 'select', required: true, default: 'CONSUMABLE',
+              options: [
+                  { value: 'PART', label: 'PART — sparepart mesin' },
+                  { value: 'CONSUMABLE', label: 'CONSUMABLE — habis pakai' },
+                  { value: 'TOOL', label: 'TOOL — alat kerja (dipinjam & dikembalikan)' },
+              ] },
+            { name: 'categ', label: 'Kategori', type: 'text' },
+            { name: 'uom_id', label: 'Satuan', type: 'select',
+              optionsFrom: { resource: 'uoms', valueKey: 'id', labelKey: 'code' } },
+            { name: 'brand', label: 'Merek', type: 'text' },
+            { name: 'spec', label: 'Spesifikasi', type: 'text' },
+            { name: 'rack_loc', label: 'Lokasi Rak', type: 'text' },
+            { name: 'min_stock', label: 'Stok Minimum', type: 'number' },
+            { name: 'max_stock', label: 'Stok Maksimum', type: 'number' },
+            { name: 'standard_cost', label: 'Harga Acuan (dipakai sebelum ada penerimaan)', type: 'number', step: '0.01' },
+            { name: 'active', label: 'Aktif', type: 'checkbox', default: true },
+        ],
+    },
+    'inspection-params': {
+        key: 'inspection-params',
+        title: 'Parameter Inspeksi',
+        singular: 'Parameter',
+        columns: [
+            { key: 'code', label: 'Kode' },
+            { key: 'name', label: 'Nama' },
+            { key: 'uom', label: 'Satuan' },
+            { key: 'method', label: 'Metode Ukur' },
+            { key: 'active', label: 'Aktif', render: (v) => (v ? 'Ya' : 'Tidak') },
+        ],
+        fields: [
+            { name: 'code', label: 'Kode', type: 'text', required: true },
+            { name: 'name', label: 'Nama Parameter', type: 'text', required: true },
+            { name: 'uom', label: 'Satuan', type: 'text' },
+            { name: 'method', label: 'Metode Pengukuran', type: 'text' },
+            { name: 'active', label: 'Aktif', type: 'checkbox', default: true },
+        ],
+    },
+    defectives: {
+        key: 'defectives',
+        title: 'Kode Defect',
+        singular: 'Defect',
+        columns: [
+            { key: 'code', label: 'Kode' },
+            { key: 'name', label: 'Nama' },
+            { key: 'type', label: 'Tipe' },
+        ],
+        fields: [
+            { name: 'code', label: 'Kode', type: 'text', required: true },
+            { name: 'name', label: 'Nama Defect', type: 'text', required: true },
+            { name: 'type', label: 'Tipe (INCOMING/PROCESS/FINAL)', type: 'text' },
+        ],
+    },
+    'exchange-rates': {
+        key: 'exchange-rates',
+        title: 'Kurs Pajak & Bank',
+        singular: 'Kurs',
+        // KMK is the weekly rate the tax office publishes; it governs customs
+        // and import VAT, and a document uses the last one published on or
+        // before its own date.
+        columns: [
+            { key: 'valid_date', label: 'Berlaku Sejak', render: (v) => (v || '').slice(0, 10) },
+            { key: 'rate_type', label: 'Jenis' },
+            { key: 'currency', label: 'Mata Uang', render: (v) => v?.code || '—' },
+            { key: 'rate', label: 'Kurs (Rp)', render: (v) => Number(v || 0).toLocaleString('id-ID') },
+        ],
+        fields: [
+            { name: 'valid_date', label: 'Berlaku Sejak', type: 'text', required: true },
+            {
+                name: 'rate_type', label: 'Jenis Kurs', type: 'select', required: true,
+                options: [{ value: 'KMK', label: 'KMK (pajak)' }, { value: 'BANK', label: 'Bank' }],
+            },
+            {
+                name: 'currency_id', label: 'Mata Uang', type: 'select', required: true,
+                optionsFrom: { resource: 'currencies', valueKey: 'id', labelKey: 'code' },
+            },
+            { name: 'rate', label: 'Kurs terhadap Rupiah', type: 'number', step: '0.0001', required: true },
         ],
     },
     taxes: {
@@ -103,6 +280,7 @@ export const RESOURCES = {
             { name: 'model', label: 'Model', type: 'text' },
             { name: 'categ', label: 'Kategori', type: 'text' },
             { name: 'maker_id', label: 'Maker', type: 'select', optionsFrom: { resource: 'makers', valueKey: 'id', labelKey: 'name' } },
+            { name: 'line_id', label: 'Lintasan Produksi', type: 'select', optionsFrom: { resource: 'production-lines', valueKey: 'id', labelKey: 'name' } },
             { name: 'min_d', label: 'Diameter Min', type: 'number', step: '0.01' },
             { name: 'max_d', label: 'Diameter Max', type: 'number', step: '0.01' },
             { name: 'serial', label: 'Serial', type: 'text' },

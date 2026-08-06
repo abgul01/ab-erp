@@ -20,12 +20,22 @@ use Illuminate\Support\Facades\DB;
  */
 class CostingService
 {
-    private const DEFAULT_LABOR_RATE = 25000.0;   // Rp/hour
-    private const DEFAULT_FOH_RATE = 40000.0;      // Rp/hour
-    private const DEFAULT_RM_KG = 15000.0;         // Rp/kg
-    private const SCRAP_VALUE_KG = 3000.0;         // Rp/kg recovered
+    private const DEFAULT_LABOR_RATE = 25000.0;
+
+    private const DEFAULT_FOH_RATE = 40000.0;
+
+    private const DEFAULT_RM_KG = 15000.0;
+
+    private const SCRAP_VALUE_KG = 3000.0;
 
     private array $rateCache = [];
+
+    private UomConversionService $uom;
+
+    public function __construct()
+    {
+        $this->uom = app(UomConversionService::class);
+    }
 
     /** @return array{material_cost:float,labor_cost:float,foh_cost:float,subcont_cost:float,scrap_recovery:float,total:float,unit_cost:float} */
     public function cogmForWo(object $wo, string $period): array
@@ -71,9 +81,8 @@ class CostingService
 
         $cost = 0.0;
         foreach ($lines as $l) {
-            $bar = max(1.0, (float) $l->length);
-            $weightPerMm = (float) $l->weight / $bar;                 // kg per mm of bar
-            $kg = (float) $l->length_use * $weightPerMm;              // kg used per fg pc
+            $kgPerMm = $this->uom->kgPerMm((float) $l->weight, (float) $l->length);
+            $kg = (float) $l->length_use * $kgPerMm;
             $cost += $kg * $this->rmCostPerKg((int) $l->mat_id);
         }
 
@@ -115,7 +124,7 @@ class CostingService
     {
         return (float) DB::table('sub_dn_detail as dd')
             ->join('sub_dn_main as dm', 'dm.id', '=', 'dd.main_id')
-            ->leftJoin('prc_po_detail as pd', function ($j) {
+            ->leftJoin('sub_po_detail as pd', function ($j) {
                 $j->on('pd.main_id', '=', 'dm.po_id')->on('pd.item_id', '=', 'dd.item_id');
             })
             ->where('dd.wo_id', $woId)
@@ -125,7 +134,6 @@ class CostingService
     /** Scrap recovered on the WO's cutting (leftover bars below usable length). */
     private function scrapRecovery(int $woId): float
     {
-        // scrapped booked serials carry their remaining length; value it by weight
         $rows = DB::table('prd_wo_serial_rm as s')
             ->join('prd_wo_detail_rm as d', 'd.id', '=', 's.detail_id')
             ->join('prd_wo_main as w', 'w.id', '=', 'd.main_id')
@@ -135,8 +143,7 @@ class CostingService
 
         $val = 0.0;
         foreach ($rows as $r) {
-            $bar = max(1.0, (float) $r->length);
-            $kg = (float) $r->length_rem * ((float) $r->weight / $bar);
+            $kg = $this->uom->remKg((float) $r->length_rem, (float) $r->weight, (float) $r->length);
             $val += $kg * self::SCRAP_VALUE_KG;
         }
 

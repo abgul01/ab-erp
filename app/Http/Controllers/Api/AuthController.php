@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\menus;
 use App\Models\User;
 use App\Support\ApiResponse;
 use App\Support\AuditLogger;
@@ -65,6 +64,31 @@ class AuthController extends Controller
         AuditLogger::record($request, 'Logout');
 
         return ApiResponse::item(['message' => 'Logout berhasil.']);
+    }
+
+    /** Ganti password akun sendiri; token lain dimatikan, token aktif dipertahankan. */
+    public function changePassword(Request $request)
+    {
+        $user = $request->user();
+        $data = $request->validate([
+            'current_password' => ['required', 'string'],
+            'password' => ['required', 'string', 'min:6', 'confirmed'],
+        ]);
+
+        if (! Hash::check($data['current_password'], $user->password)) {
+            throw ValidationException::withMessages([
+                'current_password' => ['Password saat ini salah.'],
+            ]);
+        }
+
+        $user->update(['password' => $data['password']]);
+        $user->tokens()
+            ->where('id', '!=', $user->currentAccessToken()?->id)
+            ->delete();
+
+        AuditLogger::record($request, 'Ganti password sendiri');
+
+        return ApiResponse::item(['message' => 'Password berhasil diganti.']);
     }
 
     private function userPayload(User $user): array

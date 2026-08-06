@@ -1,4 +1,4 @@
-import { useState, useRef, useLayoutEffect } from 'react';
+import { useState, useRef, useLayoutEffect, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { apiError } from '../../api/client';
 import { useAuth } from '../../stores/auth';
@@ -25,6 +25,8 @@ export default function MpsPage() {
     const [drag, setDrag] = useState(null);
     const [error, setError] = useState('');
     const [focus, setFocus] = useState(null); // item_id whose routing flow is highlighted
+    const [searchQuery, setSearchQuery] = useState('');
+    const [foundIds, setFoundIds] = useState(new Set());
     const wrapRef = useRef(null);
     const [line, setLine] = useState([]);
 
@@ -104,28 +106,86 @@ export default function MpsPage() {
         setLine(pts);
     }, [focus, list.data, month, daysInMonth]);
 
+    // Search lots by item code, part name, process code, or lot id
+    useEffect(() => {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) { setFoundIds(new Set()); return; }
+        const matches = inMonth.filter((m) =>
+            (m.item?.code && m.item.code.toLowerCase().includes(q)) ||
+            (m.item?.part_name && m.item.part_name.toLowerCase().includes(q)) ||
+            (m.process?.code && m.process.code.toLowerCase().includes(q)) ||
+            String(m.id).includes(q)
+        ).map((m) => m.id);
+        setFoundIds(new Set(matches));
+    }, [searchQuery, list.data, month]);
+
+    // The route as SVG geometry: `points` for the polylines, and the same path
+    // in `d` form for the dot that travels along it.
+    const pathPoints = line.map((p) => `${p.x},${p.y}`).join(' ');
+    const motionPath = line.length > 1
+        ? line.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
+        : '';
+
     return (
         <div className="p-6">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h1 className="text-xl font-semibold text-slate-800">MPS — Muat Mesin (Machine Loading)</h1>
                 <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative">
+                        <input type="text" className="field-input w-48 pl-8 text-xs" placeholder="Cari lot…" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                        <Icon name="search" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                        {foundIds.size > 0 && <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-blue-600">{foundIds.size}</span>}
+                    </div>
                     <input type="month" className="field-input w-40" value={month} onChange={(e) => setMonth(e.target.value)} />
                     {can('mps', 'create') && <button className="btn btn-ghost" onClick={() => window.confirm(`Generate MPS ${month} dari MPP approved? Lot DRAFT bulan ini dibuat ulang mengisi kapasitas mesin 16 jam/hari.`) && generate.mutate()} disabled={generate.isPending}>{generate.isPending ? <Icon name="spinner" className="h-4 w-4 animate-spin" /> : <Icon name="workflow" />} Generate dari MPP</button>}
                     {can('mps', 'create') && <button className="btn btn-primary" onClick={() => openCreate()}><Icon name="plus" /> Tambah Lot</button>}
                 </div>
             </div>
-            <p className="mb-3 text-xs text-slate-400">Baris = mesin, sel = lot (proses · item · qty) per hari. Kapasitas 8j × 2 shift = 16 jam/hari. <b>Arahkan kursor</b> ke sebuah lot untuk melihat <span className="text-blue-600">garis alur</span> item itu (urut proses: 1→2→3…) melintasi mesin & tanggal. Klik lot untuk lihat/edit; lot DRAFT bisa di-<b>drag</b> bebas; lot <span className="text-emerald-600">APPROVED</span> yang di-drag akan <b>mengajukan reschedule</b> (perlu persetujuan). Lot yang <span className="rounded bg-yellow-300 px-1 text-yellow-900">berkedip kuning</span> sedang menunggu persetujuan.</p>
+            <p className="mb-3 text-xs text-slate-400">Baris = mesin, sel = lot (proses · item · qty) per hari. Kapasitas 8j × 2 shift = 16 jam/hari. <b>Arahkan kursor</b> ke sebuah lot untuk melihat <span className="text-blue-600">garis alur</span> item itu melintasi mesin &amp; tanggal — <b>panah dan garis putusnya berjalan searah urutan proses</b> (1→2→3…). Klik lot untuk lihat/edit; lot DRAFT bisa di-<b>drag</b> bebas; lot <span className="text-emerald-600">APPROVED</span> yang di-drag akan <b>mengajukan reschedule</b> (perlu persetujuan). Lot yang <span className="rounded bg-yellow-300 px-1 text-yellow-900">berkedip kuning</span> sedang menunggu persetujuan.</p>
 
             <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
               <div ref={wrapRef} className="relative" style={{ width: 'max-content' }}>
                 <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
+                    <defs>
+                        <marker id="mps-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+                            markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb" />
+                        </marker>
+                    </defs>
+
                     {line.length > 1 && (
-                        <polyline points={line.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke="#2563eb" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" opacity="0.85" />
+                        <>
+                            {/*
+                              * Three layers make the direction readable at a glance: a pale
+                              * track showing the whole route, an arrowhead on every hop, and
+                              * dashes marching from one operation to the next.
+                              */}
+                            <polyline points={pathPoints} fill="none" stroke="#2563eb" strokeWidth="2"
+                                strokeLinejoin="round" strokeLinecap="round" opacity="0.28" />
+
+                            {line.slice(1).map((p, i) => (
+                                <line key={`a${i}`} x1={line[i].x} y1={line[i].y} x2={p.x} y2={p.y}
+                                    stroke="#2563eb" strokeWidth="2" opacity="0.55" markerEnd="url(#mps-arrow)" />
+                            ))}
+
+                            <polyline className="mps-flow-march" points={pathPoints} fill="none"
+                                stroke="#1d4ed8" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+                        </>
                     )}
+
+                    {/* The head of the flow, running the route on a loop. */}
+                    {line.length > 1 && (
+                        <circle className="mps-flow-runner" r="4" fill="#1d4ed8" stroke="#fff" strokeWidth="1.5">
+                            <animateMotion dur={`${Math.max(2.5, line.length * 0.7)}s`} repeatCount="indefinite"
+                                path={motionPath} rotate="auto" />
+                        </circle>
+                    )}
+
                     {line.map((p, i) => (
                         <g key={i}>
-                            <circle cx={p.x} cy={p.y} r="4" fill="#2563eb" />
-                            <text x={p.x} y={p.y + 3} textAnchor="middle" fontSize="8" fill="#fff" fontWeight="700">{i + 1}</text>
+                            <circle cx={p.x} cy={p.y} r="8" fill="#fff" opacity="0.9" />
+                            <circle cx={p.x} cy={p.y} r="7" fill="#2563eb" />
+                            <text x={p.x} y={p.y + 3} textAnchor="middle" fontSize="9" fill="#fff" fontWeight="700">{i + 1}</text>
                         </g>
                     ))}
                 </svg>
@@ -173,7 +233,7 @@ export default function MpsPage() {
                                                     onMouseLeave={() => setFocus((f) => (f === m.item_id ? null : f))}
                                                     onClick={(e) => { e.stopPropagation(); openEdit(m); }}
                                                     title={`${m.op_seq ? 'OP' + m.op_seq + ' · ' : ''}${m.process?.code ? m.process.code + ' · ' : ''}${m.item?.code} · ${m.plan_date?.slice(0, 10)} · qty ${m.qty} · ${m.status}${m.pending ? ' · MENUNGGU PERSETUJUAN RESCHEDULE' : ''}`}
-                                                    className={`mb-0.5 cursor-pointer rounded px-1 py-0.5 text-center leading-tight text-white shadow-sm transition-opacity ${m.pending ? 'mps-pending' : opColor(m.op_seq)} ${m.status === 'DRAFT' ? 'hover:brightness-110' : ''} ${m.status === 'APPROVED' && focus !== m.item_id ? 'ring-2 ring-emerald-700' : ''} ${focus && focus !== m.item_id ? 'opacity-25' : ''} ${focus === m.item_id ? 'relative z-30 ring-2 ring-blue-600' : ''}`}>
+                                                    className={`mb-0.5 cursor-pointer rounded px-1 py-0.5 text-center leading-tight text-white shadow-sm transition-opacity ${m.pending ? 'mps-pending' : opColor(m.op_seq)} ${foundIds.has(m.id) ? 'mps-found' : ''} ${m.status === 'DRAFT' ? 'hover:brightness-110' : ''} ${m.status === 'APPROVED' && focus !== m.item_id ? 'ring-2 ring-emerald-700' : ''} ${focus && focus !== m.item_id ? 'opacity-25' : ''} ${focus === m.item_id ? 'relative z-30 ring-2 ring-blue-600' : ''}`}>
                                                     <div className="truncate text-[8px] font-semibold uppercase tracking-wide opacity-80">{m.op_seq ? `OP${m.op_seq} · ` : ''}{m.process?.code || '—'}</div>
                                                     <div className="truncate text-[9px] font-medium opacity-90">{m.item?.code}</div>
                                                     <div className="text-[11px] font-semibold">{money(m.qty)}</div>

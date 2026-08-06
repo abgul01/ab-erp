@@ -10,8 +10,11 @@ class prd_wo_serial_rm extends Model
     use HasFactory;
 
     protected $connection = 'mysql';
+
     protected $table = 'prd_wo_serial_rm';
+
     protected $primaryKey = 'id';
+
     public $incrementing = true;
 
     protected $fillable = [
@@ -23,7 +26,8 @@ class prd_wo_serial_rm extends Model
         'length_rem',
         'qty_serial',
         'scrap',
-        'note'
+        'note',
+        'version',
     ];
 
     public function detail()
