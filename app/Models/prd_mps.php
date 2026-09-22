@@ -25,6 +25,7 @@ class prd_mps extends Model
         'proc_id',
         'qty',
         'machine_id',
+        'machine_label',
         'status',
     ];
 

@@ -164,6 +164,10 @@ class MpsController extends Controller
         }
         $mpps = $mppQuery->get();
 
+        // pre-load machine code+name map dan process name map untuk label
+        $machineMap = \DB::table('m_machine')->get(['id','code','name'])->keyBy('id');
+        $processMap = \DB::table('m_process')->get(['id','name_p'])->keyBy('id');
+
         // machine-day used-seconds ledger: $load[machineId][date]
         $load = [];
 
@@ -193,7 +197,7 @@ class MpsController extends Controller
             $ops = $planner->routing($itemId);
             if (empty($ops)) {
                 // no routing/cycle time → single unscheduled lot on day 1
-                prd_mps::create(['plan_date' => $days[0] ?? ($period.'01'), 'item_id' => $itemId, 'proc_id' => null, 'qty' => $plan, 'machine_id' => null, 'status' => 'DRAFT']);
+                prd_mps::create(['plan_date' => $days[0] ?? ($period.'01'), 'item_id' => $itemId, 'proc_id' => null, 'qty' => $plan, 'machine_id' => null, 'machine_label' => 'UNROUTED', 'status' => 'DRAFT']);
                 $created++;
                 $items++;
 
@@ -214,7 +218,8 @@ class MpsController extends Controller
                 if (empty($machines)) {
                     // process has no machine/cycle → park the lot unscheduled, keep the flow moving
                     if ($remaining > 0) {
-                        prd_mps::create(['plan_date' => $days[$startIdx] ?? $days[0], 'item_id' => $itemId, 'proc_id' => $procId, 'qty' => $remaining, 'machine_id' => null, 'status' => 'DRAFT']);
+                        $procName = ($processMap[$procId]->name_p ?? "Proc#{$procId}");
+                        prd_mps::create(['plan_date' => $days[$startIdx] ?? $days[0], 'item_id' => $itemId, 'proc_id' => $procId, 'qty' => $remaining, 'machine_id' => null, 'machine_label' => 'OUTSOURCE: '.$procName, 'status' => 'DRAFT']);
                         $created++;
                     }
                     $startIdx = min($nDays - 1, $startIdx + 1);
@@ -239,7 +244,14 @@ class MpsController extends Controller
                             continue;
                         }
                         $q = min($maxPcs, $remaining);
-                        prd_mps::create(['plan_date' => $date, 'item_id' => $itemId, 'proc_id' => $procId, 'qty' => $q, 'machine_id' => $mid, 'status' => 'DRAFT']);
+                        $mc = $machineMap[$mid] ?? null;
+                        if ($mc && str_starts_with($mc->code, 'OUT-')) {
+                            $pName = ($processMap[$procId]->name_p ?? "Proc#{$procId}");
+                            $mcLabel = 'OUTSOURCE: '.$pName.' ('.$mc->name.')';
+                        } else {
+                            $mcLabel = ($mc ? $mc->code.' – '.$mc->name : "MCH#{$mid}");
+                        }
+                        prd_mps::create(['plan_date' => $date, 'item_id' => $itemId, 'proc_id' => $procId, 'qty' => $q, 'machine_id' => $mid, 'machine_label' => $mcLabel, 'status' => 'DRAFT']);
                         $load[$mid][$date] = ($load[$mid][$date] ?? 0) + $q * $cyc;
                         $remaining -= $q;
                         $created++;

@@ -14,37 +14,26 @@ export default defineConfig({
         tailwindcss(),
         VitePWA({
             registerType: 'autoUpdate',
-            includeAssets: ['favicon.ico'],
-            manifest: {
-                name: 'AB-ERP MES',
-                short_name: 'AB-ERP',
-                description: 'Manufaktur Pipa ERP + MES',
-                theme_color: '#1e40af',
-                background_color: '#ffffff',
-                display: 'standalone',
-                orientation: 'any',
-                icons: [
-                    { src: '/favicon.ico', sizes: '48x48', type: 'image/x-icon' },
-                ],
-            },
+            manifest: false, // Using separate manifest.webmanifest
             workbox: {
                 globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
                 runtimeCaching: [
                     {
-                        urlPattern: /^https?:\/\/.*\/api\/.*/i,
-                        handler: 'NetworkFirst',
+                        urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+                        handler: 'CacheFirst',
                         options: {
-                            cacheName: 'api-cache',
-                            expiration: { maxEntries: 100, maxAgeSeconds: 3600 },
-                        },
-                    },
-                ],
-            },
-        }),
+                            cacheName: 'google-fonts-cache',
+                            expiration: {
+                                maxEntries: 10,
+                                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+                            },
+                            cacheableResponse: {
+                                statuses: [0, 200]
+                            }
+                        }
+                    }
+                ]
+            }
+        })
     ],
-    server: {
-        watch: {
-            ignored: ['**/storage/framework/views/**'],
-        },
-    },
 });

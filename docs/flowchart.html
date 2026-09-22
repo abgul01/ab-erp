@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>AB-ERP Module Flowchart (Entitas)</title>
+<style>
+:root{--bg:#0d1117;--surface:#161b22;--surface2:#21262d;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#58a6ff;--green:#3fb950;--purple:#bc8cff;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;height:100vh}
+#topbar{position:fixed;top:0;left:0;right:0;height:48px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:12px;z-index:100;}
+#topbar h1{font-size:14px;font-weight:600;color:var(--accent);margin-right:auto}
+.tbtn{padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer;}
+.tbtn:hover{background:var(--border)}
+#search{padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;width:180px;outline:none;}
+#search::placeholder{color:var(--muted)}
+#search:focus{border-color:var(--accent)}
+#canvas-wrap{position:fixed;top:48px;left:0;right:0;bottom:0;overflow:hidden;background:#090c10;}
+svg#diagram{width:100%;height:100%;cursor:grab}
+svg#diagram:active{cursor:grabbing}
+#tooltip{position:fixed;pointer-events:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12px;line-height:1.6;max-width:280px;display:none;z-index:200;box-shadow:0 8px 24px #0008;}
+#tooltip strong{color:var(--accent);display:block;margin-bottom:4px;font-size:13px}
+#tooltip em{color:var(--muted);font-style:normal;font-size:11px}
+#infopanel{position:fixed;top:48px;right:0;width:320px;height:calc(100vh - 48px);background:var(--surface);border-left:1px solid var(--border);overflow-y:auto;padding:16px;font-size:12px;line-height:1.7;transform:translateX(100%);transition:transform .25s ease;z-index:90;box-shadow:-4px 0 20px #000a;}
+#infopanel.open{transform:translateX(0)}
+#infopanel h2{font-size:15px;color:var(--accent);margin-bottom:8px;}
+#infopanel h3{font-size:12px;color:var(--green);margin:14px 0 4px}
+#infopanel p{color:var(--muted);margin-bottom:6px}
+#infopanel code{background:var(--surface2);border-radius:4px;padding:2px 6px;font-size:11px;color:var(--purple)}
+#infopanel ul{padding-left:16px;color:var(--muted)}
+#infopanel li{margin-bottom:3px}
+#btnClose{position:absolute;top:12px;right:12px;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1;}
+#btnClose:hover{color:var(--text)}
+#hint{font-size:11px;color:var(--muted)}
+@keyframes dash { to { stroke-dashoffset: 0; } }
+</style>
+</head>
+<body>
+<div id="topbar">
+  <h1>&#11041; AB-ERP &middot; Flowchart Entitas</h1>
+  <input id="search" type="text" placeholder="&#128269; Cari modul&hellip;" oninput="doSearch(this.value)"/>
+  <span id="hint">Lebih Lebar &amp; Renggang &middot; Gulir mouse (Wheel) utk Zoom. Klik & tahan utk geser. Klik Node utk detail.</span>
+  <button class="tbtn" onclick="resetAll()">&#8635; Reset Highlight</button>
+  <button class="tbtn" onclick="zoomFit()">&#9651; Fit Screen</button>
+</div>
+<div id="tooltip"></div>
+<div id="infopanel">
+  <button id="btnClose" onclick="closePanel()">&#10005;</button>
+  <div id="panel-content"></div>
+</div>
+<div id="canvas-wrap">
+<svg id="diagram" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L0,8 L8,4 z" fill="#30363d"/></marker>
+  <marker id="arr-hi" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L0,8 L8,4 z" fill="#58a6ff"/></marker>
+  <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+    <feGaussianBlur stdDeviation="6" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+</defs>
+<g id="root"></g>
+</svg>
+</div>
+
+<script>
+const REGIONS = [
+  { id: 'master', label: '1. Master Data & System', x: 60, y: 80, w: 260, h: 950, color: '#1f6feb' },
+  { id: 'sales', label: '2. Sales & NPD', x: 440, y: 80, w: 260, h: 950, color: '#b91c1c' },
+  { id: 'planproc', label: '3. Planning & Procurement', x: 820, y: 80, w: 260, h: 950, color: '#b45309' },
+  { id: 'inventory', label: '4. Warehouse (WMS)', x: 1200, y: 80, w: 260, h: 950, color: '#1a7f37' },
+  { id: 'production', label: '5. Production (MES)', x: 1580, y: 80, w: 260, h: 950, color: '#6e40c9' },
+  { id: 'finance', label: '6. Finance & Accounting', x: 1960, y: 80, w: 260, h: 950, color: '#0f766e' },
+];
+
+const W = 160, H = 44, RX = 8;
+const NODES = [
+  // Kolom 1
+  {id:'vendor',   label:'Vendor / Customer', g:'master', x:110, y:160, desc:'Master kontak.', det:'<h3>Model</h3><code>m_contacts</code>'},
+  {id:'item',     label:'Item Master',       g:'master', x:110, y:270, desc:'Entitas inti material.', det:'<h3>Model</h3><code>m_item</code>'},
+  {id:'bom',      label:'Bill of Material',  g:'master', x:110, y:380, desc:'Struktur produksi RM ke FG.', det:'<h3>Model</h3><code>m_bom</code>'},
+  {id:'quota',    label:'Import Quota',      g:'master', x:110, y:490, desc:'Batas volume impor (SPI).', det:'<h3>Model</h3><code>m_quota</code>'},
+  {id:'pricelist',label:'Pricelist & Dateline', g:'master', x:110, y:600, desc:'Harga jual ke customer (Valid per Periode).', det:'<h3>Model</h3><code>m_pricelist_det</code><br><br><b>Fitur:</b> valid_from & valid_to'},
+  {id:'subitem',  label:'Subcont Item',      g:'master', x:110, y:710, desc:'Master item khusus maklon.', det:'<h3>Controller</h3><code>SubcontItemController</code>'},
+  {id:'approval', label:'Approval Engine',   g:'master', x:110, y:820, desc:'System approval 1-pintu terpusat.', det:'<h3>Service</h3><code>ApprovalEngine</code>'},
+  {id:'exchange', label:'Exchange Rate',     g:'master', x:110, y:930, desc:'Kurs valas per periode (BI/KMK/Budget).', det:'<h3>Tabel</h3><code>m_exchange_rates</code><br><br><b>Tipe:</b> KMK pajak, BI operasional'},
+  
+  // Kolom 2
+  {id:'forecast', label:'Sales Forecast',    g:'sales', x:490, y:160, desc:'Proyeksi demand di masa depan.', det:'<h3>Model</h3><code>sls_forecast</code>'},
+  {id:'so',       label:'Sales Order (SO)',  g:'sales', x:490, y:270, desc:'Pesanan valid dari customer.', det:'<h3>Controller</h3><code>SoController</code>'},
+  {id:'do',       label:'Delivery Order',    g:'sales', x:490, y:380, desc:'Pengiriman barang jadi (FG).', det:'<h3>Controller</h3><code>DoController</code>'},
+  {id:'packinglist',label:'Packing List',    g:'sales', x:490, y:490, desc:'Dokumen pengiriman & paletisasi.', det:'<h3>Controller</h3><code>PackingListController</code>'},
+  {id:'npdproj',  label:'NPD Project',       g:'sales', x:490, y:600, desc:'Manajemen proyek produk baru.', det:'<h3>Controller</h3><code>NpdProjectController</code>'},
+  {id:'npdcost',  label:'NPD Costing',       g:'sales', x:490, y:710, desc:'Estimasi biaya & margin.', det:'<h3>Controller</h3><code>NpdCostingController</code>'},
+  {id:'npdtrial', label:'NPD Trial / PPAP',  g:'sales', x:490, y:820, desc:'Uji coba produksi item baru.', det:'<h3>Controller</h3><code>NpdTrialController</code>'},
+
+  // Kolom 3
+  {id:'quotation',label:'Vendor Quotation',  g:'planproc', x:870, y:160, desc:'Tender harga dari vendor.', det:'<h3>Service</h3><code>VendorQuotationService</code>'},
+  {id:'mpp',      label:'MPP',               g:'planproc', x:870, y:270, desc:'Master Production Plan (Bulanan).', det:'<h3>Model</h3><code>prd_mpp</code>'},
+  {id:'mps',      label:'MPS',               g:'planproc', x:870, y:380, desc:'Jadwalkan FG & Generate Work Order.', det:'<h3>Model</h3><code>prd_mps</code><br><br><b>Output:</b> Work Order (WO)'},
+  {id:'mrp',      label:'MRP Run',           g:'planproc', x:870, y:490, desc:'Explode BOM RM -> Kalkulasi Stok.', det:'<h3>Service</h3><code>RunMrpJob</code><br><br><b>Output:</b> Purchase Requisiton (PR)'},
+  {id:'pr',       label:'Purch. Requisition',g:'planproc', x:870, y:600, desc:'Permintaan pengadaan.', det:'<h3>Controller</h3><code>PrController</code>'},
+  {id:'po',       label:'Purchase Order (PO)',g:'planproc', x:870, y:710, desc:'PO komersial ke Vendor.', det:'<h3>Controller</h3><code>PoController</code>'},
+  {id:'subpo',    label:'Subcontract PO',    g:'planproc', x:870, y:820, desc:'PO maklon jahit / rakit / dll.', det:'<h3>Controller</h3><code>SubcontPoController</code>'},
+  {id:'whspo',    label:'WHS PO (Tools)',    g:'planproc', x:870, y:930, desc:'PO Sparepart & Consumables.', det:'<h3>Controller</h3><code>WhsPoController</code>'},
+
+  // Kolom 4
+  {id:'gr',       label:'Goods Receipt (GR)',g:'inventory', x:1250, y:160, desc:'Terima material dari PO (Draft stok).', det:'<h3>Controller</h3><code>GrController</code>'},
+  {id:'qas',      label:'QAS (Quality Check)',g:'inventory', x:1250, y:270, desc:'Pengecekan Incoming Material NG/OK.', det:'<h3>Controller</h3><code>QasController</code>'},
+  {id:'inc',      label:'Incoming RM',       g:'inventory', x:1250, y:380, desc:'Material masuk ke rak gudang.', det:'<h3>Controller</h3><code>IncomingController</code>'},
+  {id:'out',      label:'RM Outgoing',       g:'inventory', x:1250, y:490, desc:'Keluarkan RM untuk Produksi.', det:'<h3>Controller</h3><code>OutgoingController</code>'},
+  {id:'fginc',    label:'FG Incoming',       g:'inventory', x:1250, y:600, desc:'Barang Jadi (FG) masuk gudang.', det:'<h3>Controller</h3><code>FgIncomingController</code>'},
+  {id:'fgout',    label:'FG Outgoing',       g:'inventory', x:1250, y:710, desc:'Potong stok gudang utk DO pengiriman.', det:'<h3>Controller</h3><code>FgOutgoingController</code>'},
+  {id:'adj',      label:'Stock Adjustment',  g:'inventory', x:1250, y:820, desc:'Koreksi minus/plus SO.', det:'<h3>Controller</h3><code>AdjustmentController</code>'},
+  {id:'whsinc',   label:'WHS / Tools In',    g:'inventory', x:1250, y:930, desc:'Terima Sparepart & Consumable.', det:'<h3>Controller</h3><code>WhsIncomingController</code>'},
+
+  // Kolom 5
+  {id:'wo',       label:'Work Order (WO)',   g:'production', x:1630, y:160, desc:'Perintah kerja lantai produksi.', det:'<h3>Controller</h3><code>WoController</code>'},
+  {id:'kanban',   label:'Kanban / FCS',      g:'production', x:1630, y:270, desc:'Floor Control System.', det:'<h3>Controller</h3><code>KanbanController</code>'},
+  {id:'crp',      label:'CRP (Capacity)',    g:'production', x:1630, y:380, desc:'Perhitungan kapasitas Mesin vs WO.', det:'<h3>Controller</h3><code>CrpController</code>'},
+  {id:'cutting',  label:'Cutting Process',   g:'production', x:1630, y:490, desc:'Step Pemotongan Plat RM.', det:'<h3>Controller</h3><code>CuttingController</code>'},
+  {id:'processing',label:'Processing (MES)', g:'production', x:1630, y:600, desc:'Sinkronisasi ke IoT Mesin.', det:'<h3>Controller</h3><code>ProcessingController</code>'},
+  {id:'scrap',    label:'Scrap / Defect',    g:'production', x:1630, y:710, desc:'Potong RM karena hasil NG (Reject).', det:'<h3>Controller</h3><code>ScrapController</code>'},
+
+  // Kolom 6
+  {id:'sinv',     label:'Sales Invoice',     g:'finance', x:2010, y:160, desc:'Tagihan penagihan Piutang AR.', det:'<h3>Controller</h3><code>SalesInvoiceController</code>'},
+  {id:'arrec',    label:'AR Receipt (Kas)',  g:'finance', x:2010, y:270, desc:'Kas Masuk dr Customer.', det:'<h3>Controller</h3><code>ArReceiptController</code>'},
+  {id:'inv',      label:'AP Invoice (PO)',   g:'finance', x:2010, y:380, desc:'Tagihan Utang Vendor dr PO Material.', det:'<h3>Controller</h3><code>InvoiceController</code>'},
+  {id:'appay',    label:'AP Payment (Bank)', g:'finance', x:2010, y:490, desc:'Uang Keluar Bank bayar utang.', det:'<h3>Controller</h3><code>ApPaymentController</code>'},
+  {id:'cogm',     label:'Costing / COGM',    g:'finance', x:2010, y:600, desc:'Harga Pokok Produksi & Rate Barang.', det:'<h3>Controller</h3><code>CogmController</code>'},
+  {id:'gl',       label:'General Ledger',    g:'finance', x:2010, y:710, desc:'Jurnal Akuntansi dan Buku Besar.', det:'<h3>Controller</h3><code>JournalController</code>'},
+  {id:'expense',  label:'AP Expense / Jasa', g:'finance', x:2010, y:820, desc:'Bayar Listrik, Pipa, ATK (Tanpa PO).', det:'<h3>Tabel</h3><code>fin_ap_expenses</code><br><br><b>Fitur:</b> Jurnal Akun General Ledger'},
+  {id:'hedging',  label:'Forex Hedging',     g:'finance', x:2010, y:930, desc:'Kontrak Valas rate tetap dr Bank', det:'<h3>Tabel</h3><code>fin_fx_hedging</code>'},
+];
+
+const EDGES = [
+  {f:'approval',t:'po'}, {f:'approval',t:'pr'}, {f:'approval',t:'wo'}, {f:'approval',t:'so'}, {f:'approval',t:'mpp'}, {f:'approval',t:'bom'},
+  {f:'item', t:'mrp'}, {f:'item', t:'pr'}, {f:'item', t:'po'}, {f:'item', t:'so'}, {f:'item', t:'gr'},
+  {f:'vendor', t:'pr'}, {f:'vendor', t:'po'}, {f:'vendor', t:'quotation'}, {f:'vendor', t:'so'},
+  {f:'bom', t:'mrp'}, {f:'bom', t:'wo'},
+  {f:'quota', t:'gr'}, {f:'pricelist', t:'so'}, {f:'subitem', t:'subpo'},
+  {f:'forecast', t:'mpp'}, {f:'so', t:'mpp'}, {f:'so', t:'wo'}, {f:'so', t:'do'},
+  {f:'do', t:'packinglist'}, {f:'do', t:'sinv'}, {f:'sinv', t:'arrec'}, {f:'sinv', t:'gl'}, {f:'arrec', t:'gl'},
+  {f:'mpp', t:'mps'}, 
+  {f:'mps', t:'wo', l:'Generate WO'}, 
+  {f:'mps', t:'mrp', l:'Input Target FG'},
+  {f:'mrp', t:'pr', l:'Suggest PR RM'},
+  {f:'quotation', t:'pr'}, {f:'pr', t:'po'}, {f:'po', t:'gr'},
+  {f:'subpo', t:'kanban'}, {f:'whspo', t:'whsinc'},
+  {f:'gr', t:'qas'}, {f:'gr', t:'inv'}, 
+  {f:'qas', t:'inc', l:'OK'}, {f:'qas', t:'scrap', l:'NG'},
+  {f:'inc', t:'out'}, {f:'out', t:'wo', l:'RM Issue'},
+  {f:'fginc', t:'fgout'}, {f:'fgout', t:'do', l:'Fulfil'},
+  {f:'wo', t:'crp'}, {f:'wo', t:'kanban'}, {f:'wo', t:'cutting'},
+  {f:'cutting', t:'processing', l:'WIP'}, {f:'processing', t:'fginc', l:'Yield FG'},
+  {f:'inv', t:'appay'}, {f:'appay', t:'gl'}, {f:'wo', t:'cogm'}, {f:'processing', t:'cogm'}, {f:'cogm', t:'gl'},
+  {f:'npdproj', t:'npdcost'}, {f:'npdcost', t:'npdtrial'}, {f:'npdtrial', t:'item', l:'Approve FG'},
+  
+  // GARIS EDGE BARU UNTUK FITUR-FITUR BARU
+  {f:'expense',   t:'appay',  l:'Bayar Jasa'},
+  {f:'hedging',   t:'appay',  l:'Lock Kurs'},
+  {f:'exchange',  t:'sinv',   l:'Kurs Pajak'},
+  {f:'exchange',  t:'gl',     l:'Buku BI'},
+];
+
+const svg = document.getElementById('diagram');
+const root = document.getElementById('root');
+const NS = 'http://www.w3.org/2000/svg';
+function el(tag, att, par){ const e=document.createElementNS(NS,tag); Object.entries(att).forEach(([k,v])=>e.setAttribute(k,v)); if(par) par.appendChild(e); return e; }
+
+const bgLayer = el('g', {id: 'regions'}, root);
+REGIONS.forEach(r => {
+  el('rect', {x:r.x, y:r.y, width:r.w, height:r.h, rx:12, fill:r.color, stroke:r.color, 'stroke-width':'1.5', opacity:'0.06'}, bgLayer);
+  const t = el('text', {x:r.x + r.w/2, y:r.y + 35, 'text-anchor':'middle', fill:r.color, 'font-size':'14', 'font-weight':'700', style:'letter-spacing:1px;text-transform:uppercase;'}, bgLayer);
+  t.textContent = r.label;
+});
+
+const nodeMap = Object.fromEntries(NODES.map(n=>[n.id, n]));
+const adjOut = {}, adjIn = {};
+NODES.forEach(n=>{adjOut[n.id]=[]; adjIn[n.id]=[];});
+EDGES.forEach((e,i)=>{if(adjOut[e.f])adjOut[e.f].push(i); if(adjIn[e.t])adjIn[e.t].push(i);});
+
+function connEdges(id){return [...new Set([...(adjOut[id]||[]), ...(adjIn[id]||[])])];}
+function connNodes(id){const s=new Set([id]); connEdges(id).forEach(i=>{s.add(EDGES[i].f); s.add(EDGES[i].t);}); return s;}
+
+const edgeEls = EDGES.map((e,i)=>{
+  const fn = nodeMap[e.f], tn = nodeMap[e.t];
+  if(!fn || !tn) return null;
+  
+  let px1, py1, px2, py2, d;
+  if(fn.x === tn.x) { 
+    px1 = fn.x + W/2; px2 = tn.x + W/2;
+    py1 = fn.y < tn.y ? fn.y + H : fn.y;
+    py2 = fn.y < tn.y ? tn.y : tn.y + H;
+    d = `M${px1},${py1} C${px1},${(py1+py2)/2} ${px2},${(py1+py2)/2} ${px2},${py2}`;
+  } else {
+    px1 = fn.x < tn.x ? fn.x + W : fn.x;
+    px2 = fn.x < tn.x ? tn.x : tn.x + W;
+    py1 = fn.y + H/2; py2 = tn.y + H/2;
+    let mx = (px1 + px2)/2;
+    d = `M${px1},${py1} C${mx},${py1} ${mx},${py2} ${px2},${py2}`;
+  }
+  
+  const path = el('path', {d, fill:'none', stroke:'#30363d', 'stroke-width':'1.6', 'marker-end':'url(#arr)', opacity:'0.7'}, root);
+  
+  let lbl=null;
+  if(e.l) {
+    const lx = (px1+px2)/2, ly = (py1+py2)/2 - 5;
+    lbl = el('text', {x:lx, y:ly, fill:'#6e7681', 'font-size':'10.5', 'text-anchor':'middle', style:'pointer-events:none;font-style:italic'}, root);
+    lbl.textContent = e.l;
+  }
+  return {path, lbl};
+});
+
+const nodeEls = {};
+NODES.forEach(n=>{
+  const rn = REGIONS.find(r=>r.id===n.g);
+  const color = rn ? rn.color : '#58a6ff';
+  
+  const g = el('g', {transform:`translate(${n.x},${n.y})`, cursor:'pointer'}, root);
+  el('rect', {x:2, y:4, width:W, height:H, rx:RX, fill:'#000', opacity:'0.3'}, g);
+  const rect = el('rect', {x:0, y:0, width:W, height:H, rx:RX, fill:'#161b22', stroke:color, 'stroke-width':'1.6', opacity:'0.9'}, g);
+  
+  const t = el('text', {x:W/2, y:H/2+2, 'text-anchor':'middle', 'dominant-baseline':'middle', fill:'#e6edf3', 'font-size':'11.5', 'font-weight':'600', style:'pointer-events:none;user-select:none'}, g);
+  t.textContent = n.label;
+
+  g.addEventListener('mouseenter',ev=>{if(!activeId){highlight(n.id);showTip(n,ev);}});
+  g.addEventListener('mouseleave',()=>{if(!activeId){resetAll();hideTip();}});
+  g.addEventListener('click',()=>{
+    if(activeId===n.id){activeId=null;resetAll();closePanel();}
+    else{activeId=n.id;highlight(n.id);openPanel(n);}
+  });
+  
+  nodeEls[n.id] = {g, rect, color};
+});
+
+let activeId = null;
+function highlight(id) {
+  const an = connNodes(id), ae = new Set(connEdges(id));
+  NODES.forEach(n=>{
+    const rt = nodeEls[n.id].rect;
+    if(an.has(n.id)) {
+      rt.setAttribute('opacity','1'); rt.setAttribute('stroke','#fff'); rt.setAttribute('stroke-width','2');
+    } else {
+      rt.setAttribute('opacity','0.15'); rt.setAttribute('stroke', nodeEls[n.id].color); rt.setAttribute('stroke-width','1');
+    }
+  });
+
+  const rt = nodeEls[id].rect;
+  rt.setAttribute('stroke','#fbbf24'); rt.setAttribute('stroke-width','2.5'); rt.setAttribute('filter','url(#glow)');
+
+  edgeEls.forEach((e,i)=>{
+    if(!e) return;
+    if(ae.has(i)) {
+      e.path.setAttribute('stroke','#58a6ff'); e.path.setAttribute('stroke-width','3'); e.path.setAttribute('opacity','1'); e.path.setAttribute('marker-end','url(#arr-hi)');
+      const len = e.path.getTotalLength() || 400;
+      e.path.style.strokeDasharray = len;
+      e.path.style.strokeDashoffset = len;
+      e.path.style.animation = 'none';
+      void e.path.offsetWidth;
+      e.path.style.animation = 'dash 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards';
+      if(e.lbl){ e.lbl.setAttribute('fill','#58a6ff'); e.lbl.setAttribute('font-weight','bold'); }
+    } else {
+      e.path.setAttribute('stroke','#161b22'); e.path.setAttribute('stroke-width','1'); e.path.setAttribute('opacity','0.3'); e.path.setAttribute('marker-end','url(#arr)');
+      e.path.style.animation = ''; e.path.style.strokeDasharray = '';
+      if(e.lbl){ e.lbl.setAttribute('fill','#30363d'); e.lbl.setAttribute('font-weight','normal'); }
+    }
+  });
+}
+
+function resetAll() {
+  activeId = null;
+  NODES.forEach(n=>{
+    const rt = nodeEls[n.id].rect;
+    rt.setAttribute('opacity','0.9'); rt.setAttribute('stroke', nodeEls[n.id].color); rt.setAttribute('stroke-width','1.6'); rt.removeAttribute('filter');
+  });
+  edgeEls.forEach(e=>{
+    if(!e) return;
+    e.path.setAttribute('stroke','#30363d'); e.path.setAttribute('stroke-width','1.6'); e.path.setAttribute('opacity','0.7'); e.path.setAttribute('marker-end','url(#arr)');
+    e.path.style.animation = ''; e.path.style.strokeDasharray = '';
+    if(e.lbl){ e.lbl.setAttribute('fill','#6e7681'); e.lbl.setAttribute('font-weight','normal'); }
+  });
+}
+
+const tip = document.getElementById('tooltip');
+function showTip(n,ev){ tip.innerHTML=`<strong>${n.label}</strong><em>${n.desc}</em>`; tip.style.display='block'; moveTip(ev); }
+function moveTip(ev){ let x = ev.clientX+16, y = ev.clientY+14; if(x+290>innerWidth) x = ev.clientX-304; if(y+80>innerHeight) y = ev.clientY-80; tip.style.left=x+'px'; tip.style.top=y+'px'; }
+document.addEventListener('mousemove', ev=>{ if(tip.style.display==='block') moveTip(ev); });
+document.addEventListener('scroll', ()=>hideTip());
+function hideTip() { tip.style.display='none'; }
+
+const panel=document.getElementById('infopanel'), pc=document.getElementById('panel-content');
+function openPanel(n){ pc.innerHTML=`<h2>${n.label}</h2><p style="font-style:italic">${n.desc}</p><hr style="border-color:var(--border);margin:12px 0"/>${n.det||''}`; panel.classList.add('open'); }
+function closePanel(){ panel.classList.remove('open'); activeId=null; resetAll(); }
+
+function doSearch(q){
+  q = q.toLowerCase().trim();
+  if(!q) { resetAll(); closePanel(); return; }
+  const hit = NODES.find(n => n.label.toLowerCase().includes(q) || n.desc.toLowerCase().includes(q));
+  if(hit) {
+    activeId = hit.id; highlight(hit.id); openPanel(hit); panTo(hit);
+  }
+}
+
+let zoom = 1, panX = 0, panY = 0, dragging = false, lx = 0, ly = 0;
+function applyT(){ root.setAttribute('transform', `translate(${panX},${panY}) scale(${zoom})`); }
+function zoomFit(){
+  const wv = svg.clientWidth, hv = svg.clientHeight;
+  const rw = 2300, rh = 1080;
+  zoom = Math.min(wv/rw, hv/rh) * 0.95;
+  panX = (wv - rw*zoom)/2 + 20; 
+  panY = (hv - rh*zoom)/2 + 20;
+  applyT();
+}
+function panTo(n){
+  panX = svg.clientWidth/2 - (n.x + W/2)*zoom;
+  panY = svg.clientHeight/2 - (n.y + H/2)*zoom;
+  applyT();
+}
+
+window.addEventListener('load', zoomFit);
+window.addEventListener('resize', zoomFit);
+
+svg.addEventListener('mousedown', e=>{ if(e.target.closest('[cursor="pointer"]')) return; dragging = true; lx = e.clientX; ly = e.clientY; });
+window.addEventListener('mousemove', e=>{ if(!dragging) return; panX += (e.clientX - lx); panY += (e.clientY - ly); lx = e.clientX; ly = e.clientY; applyT(); });
+window.addEventListener('mouseup', ()=>dragging=false);
+window.addEventListener('mouseleave', ()=>dragging=false);
+
+svg.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const d = e.deltaY > 0 ? 0.9 : 1.1;
+  const r = svg.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  panX = mx - (mx - panX)*d; panY = my - (my - panY)*d;
+  zoom = Math.max(0.15, Math.min(4, zoom*d));
+  applyT();
+}, {passive:false});
+</script>
+</body>
+</html>
